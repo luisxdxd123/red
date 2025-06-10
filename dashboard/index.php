@@ -15,6 +15,15 @@ $stmt = $db->prepare($query);
 $stmt->execute();
 $posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+// Obtener medios para cada post que los tenga
+foreach ($posts as &$post) {
+    if ($post['has_media']) {
+        $post['media'] = getPostMedia($post['id']);
+    } else {
+        $post['media'] = [];
+    }
+}
+
 // Obtener número de mensajes no leídos
 $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
 ?>
@@ -71,15 +80,64 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
         </div>
     </nav>
 
+    <!-- Notificaciones -->
+    <?php if (isset($_SESSION['success'])): ?>
+        <div class="max-w-4xl mx-auto px-4 pt-4">
+            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4" role="alert">
+                <span class="block sm:inline"><?php echo $_SESSION['success']; unset($_SESSION['success']); ?></span>
+            </div>
+        </div>
+    <?php endif; ?>
+
+    <?php if (isset($_SESSION['warning'])): ?>
+        <div class="max-w-4xl mx-auto px-4 pt-4">
+            <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4" role="alert">
+                <span class="block sm:inline"><?php echo $_SESSION['warning']; unset($_SESSION['warning']); ?></span>
+            </div>
+        </div>
+    <?php endif; ?>
+
+    <?php if (isset($_SESSION['error'])): ?>
+        <div class="max-w-4xl mx-auto px-4 pt-4">
+            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4" role="alert">
+                <span class="block sm:inline"><?php echo $_SESSION['error']; unset($_SESSION['error']); ?></span>
+            </div>
+        </div>
+    <?php endif; ?>
+
     <div class="max-w-4xl mx-auto px-4 py-8">
         <!-- Crear Post -->
         <div class="bg-white rounded-lg shadow-md p-6 mb-6">
             <h3 class="text-lg font-semibold mb-4">¿Qué estás pensando?</h3>
-            <form action="create_post.php" method="POST" class="space-y-4">
+            <form action="create_post.php" method="POST" enctype="multipart/form-data" class="space-y-4">
                 <textarea name="content" placeholder="Comparte algo interesante..." 
                           class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none" 
-                          rows="3" required></textarea>
-                <div class="flex justify-end">
+                          rows="3"></textarea>
+                
+                <!-- Sección de archivos multimedia -->
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                    <div class="text-center">
+                        <i class="fas fa-cloud-upload-alt text-gray-400 text-3xl mb-2"></i>
+                        <p class="text-gray-600 mb-2">Arrastra archivos aquí o haz clic para seleccionar</p>
+                        <p class="text-sm text-gray-500">Máximo 10 archivos. Imágenes (JPG, PNG, GIF, WebP) hasta 10MB. Videos (MP4, WebM, MOV, AVI) hasta 100MB.</p>
+                    </div>
+                    <input type="file" name="media[]" multiple accept="image/*,video/*" 
+                           id="media-input" class="hidden" onchange="previewFiles(this)">
+                    <button type="button" onclick="document.getElementById('media-input').click()" 
+                            class="w-full mt-2 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg transition duration-300">
+                        <i class="fas fa-plus mr-2"></i>Seleccionar archivos
+                    </button>
+                </div>
+                
+                <!-- Vista previa de archivos -->
+                <div id="media-preview" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 hidden"></div>
+                
+                <!-- Botones de acción -->
+                <div class="flex justify-between items-center">
+                    <button type="button" onclick="clearFiles()" id="clear-btn" 
+                            class="text-red-600 hover:text-red-800 transition duration-300 hidden">
+                        <i class="fas fa-trash mr-1"></i>Limpiar archivos
+                    </button>
                     <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
                         <i class="fas fa-paper-plane mr-2"></i>Publicar
                     </button>
@@ -90,7 +148,7 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
         <!-- Posts Timeline -->
         <div class="space-y-6">
             <?php foreach ($posts as $post): ?>
-                <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="bg-white rounded-lg shadow-md p-6" data-post-id="<?php echo $post['id']; ?>">
                     <!-- Header del Post -->
                     <div class="flex items-center mb-4">
                         <div class="w-10 h-10 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center text-white font-bold text-sm">
@@ -113,7 +171,64 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
 
                     <!-- Contenido del Post -->
                     <div class="mb-4">
-                        <p class="text-gray-800 leading-relaxed"><?php echo nl2br(htmlspecialchars($post['content'])); ?></p>
+                        <?php if (!empty($post['content'])): ?>
+                            <p class="text-gray-800 leading-relaxed mb-4"><?php echo nl2br(htmlspecialchars($post['content'])); ?></p>
+                        <?php endif; ?>
+                        
+                        <!-- Medios del Post -->
+                        <?php if (!empty($post['media'])): ?>
+                            <div class="media-grid">
+                                <?php 
+                                $media_count = count($post['media']);
+                                $grid_class = '';
+                                if ($media_count == 1) {
+                                    $grid_class = 'grid-cols-1';
+                                } elseif ($media_count == 2) {
+                                    $grid_class = 'grid-cols-2';
+                                } elseif ($media_count == 3) {
+                                    $grid_class = 'grid-cols-2';
+                                } elseif ($media_count >= 4) {
+                                    $grid_class = 'grid-cols-2';
+                                }
+                                ?>
+                                <div class="grid <?php echo $grid_class; ?> gap-2 rounded-lg overflow-hidden">
+                                    <?php 
+                                    $display_count = min($media_count, 4);
+                                    for ($i = 0; $i < $display_count; $i++): 
+                                        $media = $post['media'][$i];
+                                        $remaining = $media_count - 4;
+                                    ?>
+                                        <div class="relative <?php echo ($media_count == 3 && $i == 0) ? 'row-span-2' : ''; ?> group cursor-pointer" 
+                                             onclick="openMediaModal(<?php echo $post['id']; ?>, <?php echo $i; ?>)">
+                                            
+                                            <?php if ($media['file_type'] == 'image'): ?>
+                                                <img src="<?php echo htmlspecialchars($media['file_path']); ?>" 
+                                                     alt="Imagen de la publicación" 
+                                                     class="w-full h-full object-cover <?php echo ($media_count == 1) ? 'max-h-96' : 'h-32 md:h-40'; ?> transition-transform group-hover:scale-105">
+                                            <?php elseif ($media['file_type'] == 'video'): ?>
+                                                <div class="relative">
+                                                    <video class="w-full h-full object-cover <?php echo ($media_count == 1) ? 'max-h-96' : 'h-32 md:h-40'; ?>" 
+                                                           preload="metadata">
+                                                        <source src="<?php echo htmlspecialchars($media['file_path']); ?>" 
+                                                                type="<?php echo htmlspecialchars($media['mime_type']); ?>">
+                                                    </video>
+                                                    <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 transition-opacity group-hover:bg-opacity-50">
+                                                        <i class="fas fa-play text-white text-2xl"></i>
+                                                    </div>
+                                                </div>
+                                            <?php endif; ?>
+                                            
+                                            <!-- Mostrar contador si hay más de 4 medios -->
+                                            <?php if ($i == 3 && $remaining > 0): ?>
+                                                <div class="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center">
+                                                    <span class="text-white text-xl font-bold">+<?php echo $remaining; ?></span>
+                                                </div>
+                                            <?php endif; ?>
+                                        </div>
+                                    <?php endfor; ?>
+                                </div>
+                            </div>
+                        <?php endif; ?>
                     </div>
 
                     <!-- Acciones del Post -->
@@ -164,6 +279,39 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
                 <p class="text-gray-500">¡Sé el primero en compartir algo!</p>
             </div>
         <?php endif; ?>
+    </div>
+
+    <!-- Modal para visualizar medios -->
+    <div id="media-modal" class="fixed inset-0 bg-black bg-opacity-90 hidden z-50 flex items-center justify-center">
+        <div class="relative max-w-4xl max-h-full p-4 w-full">
+            <!-- Botón cerrar -->
+            <button onclick="closeMediaModal()" 
+                    class="absolute top-4 right-4 text-white hover:text-gray-300 text-2xl z-10">
+                <i class="fas fa-times"></i>
+            </button>
+            
+            <!-- Navegación anterior -->
+            <button id="prev-media" onclick="navigateMedia(-1)" 
+                    class="absolute left-4 top-1/2 transform -translate-y-1/2 text-white hover:text-gray-300 text-2xl z-10 hidden">
+                <i class="fas fa-chevron-left"></i>
+            </button>
+            
+            <!-- Navegación siguiente -->
+            <button id="next-media" onclick="navigateMedia(1)" 
+                    class="absolute right-4 top-1/2 transform -translate-y-1/2 text-white hover:text-gray-300 text-2xl z-10 hidden">
+                <i class="fas fa-chevron-right"></i>
+            </button>
+            
+            <!-- Contenedor del medio -->
+            <div id="modal-media-container" class="flex items-center justify-center h-full">
+                <!-- El contenido se carga dinámicamente -->
+            </div>
+            
+            <!-- Información del medio -->
+            <div id="media-info" class="absolute bottom-4 left-4 right-4 text-white text-center">
+                <p id="media-counter" class="text-sm opacity-75"></p>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -243,6 +391,269 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
                 }
             });
         }
+
+        // ===== FUNCIONES PARA MANEJO DE ARCHIVOS MULTIMEDIA =====
+        
+        // Función para previsualizar archivos seleccionados
+        function previewFiles(input) {
+            const files = input.files;
+            const preview = document.getElementById('media-preview');
+            const clearBtn = document.getElementById('clear-btn');
+            
+            if (files.length === 0) {
+                preview.classList.add('hidden');
+                clearBtn.classList.add('hidden');
+                return;
+            }
+            
+            preview.innerHTML = '';
+            preview.classList.remove('hidden');
+            clearBtn.classList.remove('hidden');
+            
+            // Validar número de archivos
+            if (files.length > 10) {
+                alert('Máximo 10 archivos permitidos');
+                input.value = '';
+                preview.classList.add('hidden');
+                clearBtn.classList.add('hidden');
+                return;
+            }
+            
+            Array.from(files).forEach((file, index) => {
+                const fileDiv = document.createElement('div');
+                fileDiv.className = 'relative bg-gray-100 rounded-lg overflow-hidden';
+                
+                const removeBtn = document.createElement('button');
+                removeBtn.type = 'button';
+                removeBtn.className = 'absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 z-10';
+                removeBtn.innerHTML = '×';
+                removeBtn.onclick = () => removeFile(index);
+                
+                if (file.type.startsWith('image/')) {
+                    const img = document.createElement('img');
+                    img.className = 'w-full h-24 object-cover';
+                    img.src = URL.createObjectURL(file);
+                    img.onload = () => URL.revokeObjectURL(img.src);
+                    
+                    fileDiv.appendChild(img);
+                } else if (file.type.startsWith('video/')) {
+                    const video = document.createElement('video');
+                    video.className = 'w-full h-24 object-cover';
+                    video.src = URL.createObjectURL(file);
+                    video.controls = false;
+                    video.muted = true;
+                    
+                    const playIcon = document.createElement('div');
+                    playIcon.className = 'absolute inset-0 flex items-center justify-center bg-black bg-opacity-50';
+                    playIcon.innerHTML = '<i class="fas fa-play text-white text-xl"></i>';
+                    
+                    fileDiv.appendChild(video);
+                    fileDiv.appendChild(playIcon);
+                }
+                
+                const fileName = document.createElement('div');
+                fileName.className = 'absolute bottom-0 left-0 right-0 bg-black bg-opacity-75 text-white text-xs p-1 truncate';
+                fileName.textContent = file.name;
+                
+                fileDiv.appendChild(removeBtn);
+                fileDiv.appendChild(fileName);
+                preview.appendChild(fileDiv);
+            });
+        }
+        
+        // Función para remover un archivo específico
+        function removeFile(index) {
+            const input = document.getElementById('media-input');
+            const dt = new DataTransfer();
+            
+            Array.from(input.files).forEach((file, i) => {
+                if (i !== index) {
+                    dt.items.add(file);
+                }
+            });
+            
+            input.files = dt.files;
+            previewFiles(input);
+        }
+        
+        // Función para limpiar todos los archivos
+        function clearFiles() {
+            const input = document.getElementById('media-input');
+            const preview = document.getElementById('media-preview');
+            const clearBtn = document.getElementById('clear-btn');
+            
+            input.value = '';
+            preview.innerHTML = '';
+            preview.classList.add('hidden');
+            clearBtn.classList.add('hidden');
+        }
+        
+        // Configurar drag & drop
+        document.addEventListener('DOMContentLoaded', function() {
+            const dropZone = document.querySelector('.border-dashed');
+            const fileInput = document.getElementById('media-input');
+            
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, unhighlight, false);
+            });
+            
+            function highlight(e) {
+                dropZone.classList.add('border-indigo-500', 'bg-indigo-50');
+            }
+            
+            function unhighlight(e) {
+                dropZone.classList.remove('border-indigo-500', 'bg-indigo-50');
+            }
+            
+            dropZone.addEventListener('drop', handleDrop, false);
+            
+            function handleDrop(e) {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                
+                                 fileInput.files = files;
+                 previewFiles(fileInput);
+             }
+         });
+
+        // ===== FUNCIONES PARA MODAL DE MEDIOS =====
+        
+        let currentPostMedia = [];
+        let currentMediaIndex = 0;
+        
+        // Función para abrir modal de medios
+        function openMediaModal(postId, mediaIndex) {
+            // Encontrar el post y sus medios
+            const postElement = document.querySelector(`[data-post-id="${postId}"]`);
+            if (!postElement) {
+                // Si no encontramos el elemento, obtener los medios via AJAX
+                fetch(`get_post_media.php?post_id=${postId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        currentPostMedia = data.media;
+                        currentMediaIndex = mediaIndex;
+                        showMediaInModal();
+                    }
+                });
+            } else {
+                // Obtener los medios del post actual
+                const mediaElements = postElement.querySelectorAll('.media-grid img, .media-grid video');
+                currentPostMedia = Array.from(mediaElements).map(el => ({
+                    file_path: el.src || el.querySelector('source').src,
+                    file_type: el.tagName.toLowerCase() === 'img' ? 'image' : 'video',
+                    mime_type: el.type || 'video/mp4'
+                }));
+                currentMediaIndex = mediaIndex;
+                showMediaInModal();
+            }
+        }
+        
+        // Función para mostrar medio en modal
+        function showMediaInModal() {
+            const modal = document.getElementById('media-modal');
+            const container = document.getElementById('modal-media-container');
+            const counter = document.getElementById('media-counter');
+            const prevBtn = document.getElementById('prev-media');
+            const nextBtn = document.getElementById('next-media');
+            
+            modal.classList.remove('hidden');
+            
+            // Limpiar contenedor
+            container.innerHTML = '';
+            
+            const media = currentPostMedia[currentMediaIndex];
+            
+            if (media.file_type === 'image') {
+                const img = document.createElement('img');
+                img.src = media.file_path;
+                img.className = 'max-w-full max-h-full object-contain';
+                container.appendChild(img);
+            } else if (media.file_type === 'video') {
+                const video = document.createElement('video');
+                video.src = media.file_path;
+                video.className = 'max-w-full max-h-full object-contain';
+                video.controls = true;
+                video.autoplay = true;
+                container.appendChild(video);
+            }
+            
+            // Actualizar contador
+            counter.textContent = `${currentMediaIndex + 1} de ${currentPostMedia.length}`;
+            
+            // Mostrar/ocultar botones de navegación
+            if (currentPostMedia.length > 1) {
+                prevBtn.classList.remove('hidden');
+                nextBtn.classList.remove('hidden');
+                
+                // Habilitar/deshabilitar botones según la posición
+                prevBtn.style.opacity = currentMediaIndex > 0 ? '1' : '0.5';
+                nextBtn.style.opacity = currentMediaIndex < currentPostMedia.length - 1 ? '1' : '0.5';
+            } else {
+                prevBtn.classList.add('hidden');
+                nextBtn.classList.add('hidden');
+            }
+        }
+        
+        // Función para navegar entre medios
+        function navigateMedia(direction) {
+            const newIndex = currentMediaIndex + direction;
+            
+            if (newIndex >= 0 && newIndex < currentPostMedia.length) {
+                currentMediaIndex = newIndex;
+                showMediaInModal();
+            }
+        }
+        
+        // Función para cerrar modal
+        function closeMediaModal() {
+            const modal = document.getElementById('media-modal');
+            const container = document.getElementById('modal-media-container');
+            
+            modal.classList.add('hidden');
+            
+            // Detener videos si hay alguno reproduciéndose
+            const videos = container.querySelectorAll('video');
+            videos.forEach(video => {
+                video.pause();
+                video.currentTime = 0;
+            });
+            
+            // Limpiar variables
+            currentPostMedia = [];
+            currentMediaIndex = 0;
+        }
+        
+        // Cerrar modal con tecla ESC
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeMediaModal();
+            } else if (e.key === 'ArrowLeft') {
+                navigateMedia(-1);
+            } else if (e.key === 'ArrowRight') {
+                navigateMedia(1);
+            }
+        });
+        
+        // Cerrar modal al hacer click fuera del contenido
+        document.getElementById('media-modal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeMediaModal();
+            }
+        });
     </script>
 </body>
 </html> 

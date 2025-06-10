@@ -290,4 +290,133 @@ function getFollowedUsersForMessaging($user_id) {
 function canSendMessageToUser($sender_id, $receiver_id) {
     return isFollowing($sender_id, $receiver_id);
 }
+
+// ===== FUNCIONES PARA MANEJO DE MEDIOS =====
+
+// Función para validar archivos multimedia
+function validateMediaFile($file) {
+    $allowed_image_types = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    $allowed_video_types = ['video/mp4', 'video/webm', 'video/quicktime', 'video/x-msvideo'];
+    $max_image_size = 10 * 1024 * 1024; // 10MB para imágenes
+    $max_video_size = 100 * 1024 * 1024; // 100MB para videos
+    
+    $file_type = $file['type'];
+    $file_size = $file['size'];
+    
+    // Verificar tipo de archivo
+    if (in_array($file_type, $allowed_image_types)) {
+        $media_type = 'image';
+        $max_size = $max_image_size;
+    } elseif (in_array($file_type, $allowed_video_types)) {
+        $media_type = 'video';
+        $max_size = $max_video_size;
+    } else {
+        return ['success' => false, 'error' => 'Tipo de archivo no permitido'];
+    }
+    
+    // Verificar tamaño
+    if ($file_size > $max_size) {
+        $max_mb = $max_size / (1024 * 1024);
+        return ['success' => false, 'error' => "El archivo es demasiado grande. Máximo: {$max_mb}MB"];
+    }
+    
+    return ['success' => true, 'media_type' => $media_type];
+}
+
+// Función para generar nombre único para archivo
+function generateUniqueFileName($original_name) {
+    $extension = pathinfo($original_name, PATHINFO_EXTENSION);
+    $name = pathinfo($original_name, PATHINFO_FILENAME);
+    $safe_name = preg_replace('/[^a-zA-Z0-9-_]/', '', $name);
+    return uniqid() . '_' . $safe_name . '.' . $extension;
+}
+
+// Función para subir archivo multimedia
+function uploadMediaFile($file, $post_id) {
+    $validation = validateMediaFile($file);
+    if (!$validation['success']) {
+        return $validation;
+    }
+    
+    // Crear directorio por fecha
+    $year = date('Y');
+    $month = date('m');
+    $upload_dir = "uploads/posts/{$year}/{$month}/";
+    
+    if (!file_exists($upload_dir)) {
+        mkdir($upload_dir, 0755, true);
+    }
+    
+    $file_name = generateUniqueFileName($file['name']);
+    $file_path = $upload_dir . $file_name;
+    
+    if (move_uploaded_file($file['tmp_name'], $file_path)) {
+        // Guardar en base de datos
+        $database = new Database();
+        $db = $database->getConnection();
+        
+        $query = "INSERT INTO post_media (post_id, file_name, file_type, file_path, file_size, mime_type) 
+                  VALUES (?, ?, ?, ?, ?, ?)";
+        $stmt = $db->prepare($query);
+        $result = $stmt->execute([
+            $post_id,
+            $file_name,
+            $validation['media_type'],
+            $file_path,
+            $file['size'],
+            $file['type']
+        ]);
+        
+        if ($result) {
+            return ['success' => true, 'file_path' => $file_path];
+        } else {
+            // Si falla la BD, eliminar archivo
+            unlink($file_path);
+            return ['success' => false, 'error' => 'Error al guardar en base de datos'];
+        }
+    } else {
+        return ['success' => false, 'error' => 'Error al subir archivo'];
+    }
+}
+
+// Función para obtener medios de un post
+function getPostMedia($post_id) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $query = "SELECT * FROM post_media WHERE post_id = ? ORDER BY created_at ASC";
+    $stmt = $db->prepare($query);
+    $stmt->execute([$post_id]);
+    
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// Función para eliminar archivo multimedia
+function deleteMediaFile($media_id, $user_id) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    // Verificar que el usuario sea dueño del post
+    $query = "SELECT pm.file_path, p.user_id 
+              FROM post_media pm 
+              JOIN posts p ON pm.post_id = p.id 
+              WHERE pm.id = ?";
+    $stmt = $db->prepare($query);
+    $stmt->execute([$media_id]);
+    $media = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if ($media && $media['user_id'] == $user_id) {
+        // Eliminar archivo físico
+        if (file_exists($media['file_path'])) {
+            unlink($media['file_path']);
+        }
+        
+        // Eliminar de base de datos
+        $query = "DELETE FROM post_media WHERE id = ?";
+        $stmt = $db->prepare($query);
+        return $stmt->execute([$media_id]);
+    }
+    
+    return false;
+}
 ?> 

@@ -1,0 +1,27 @@
+# Prevenir ejecución de scripts PHP en la carpeta uploads
+<Files *.php>
+    Order Deny,Allow
+    Deny from all
+</Files>
+
+# Permitir solo ciertos tipos de archivos
+<FilesMatch "\.(jpg|jpeg|png|gif|webp|mp4|webm|mov|avi)$">
+    Order Allow,Deny
+    Allow from all
+</FilesMatch>
+
+# Denegar acceso a otros tipos de archivos
+<FilesMatch "\.">
+    Order Deny,Allow
+    Deny from all
+</FilesMatch>
+
+# Permitir tipos MIME específicos
+AddType image/jpeg .jpg .jpeg
+AddType image/png .png
+AddType image/gif .gif
+AddType image/webp .webp
+AddType video/mp4 .mp4
+AddType video/webm .webm
+AddType video/quicktime .mov
+AddType video/x-msvideo .avi 
