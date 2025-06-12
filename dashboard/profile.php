@@ -126,14 +126,21 @@ $following_count = $stmt->fetchColumn();
             <?php else: ?>
                 <div class="space-y-6">
                     <?php foreach ($posts as $post): ?>
-                        <div class="border-b border-gray-200 pb-6 last:border-b-0">
+                        <div class="border-b border-gray-200 pb-6 last:border-b-0" data-post-id="<?php echo $post['id']; ?>">
                             <div class="flex items-center mb-3">
                                 <div class="w-8 h-8 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center text-white font-bold text-xs">
                                     <?php echo strtoupper(substr($post['first_name'], 0, 1) . substr($post['last_name'], 0, 1)); ?>
                                 </div>
-                                <div class="ml-3">
+                                <div class="ml-3 flex-1">
                                     <h4 class="font-semibold text-gray-900"><?php echo $post['first_name'] . ' ' . $post['last_name']; ?></h4>
                                     <p class="text-xs text-gray-500"><?php echo timeAgo($post['created_at']); ?></p>
+                                </div>
+                                <div class="flex space-x-2">
+                                    <button onclick="deletePost(<?php echo $post['id']; ?>)" 
+                                            class="text-gray-500 hover:text-red-500 transition duration-300" 
+                                            title="Eliminar publicación">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
                                 </div>
                             </div>
                             
@@ -199,6 +206,97 @@ $following_count = $stmt->fetchColumn();
         
         function closeEditModal() {
             document.getElementById('editModal').classList.add('hidden');
+        }
+
+        // Función para eliminar post
+        function deletePost(postId) {
+            if (confirm('¿Estás seguro de que quieres eliminar esta publicación? Esta acción no se puede deshacer.')) {
+                // Mostrar indicador de carga
+                const postElement = document.querySelector(`[data-post-id="${postId}"]`);
+                const deleteBtn = postElement.querySelector('button[onclick*="deletePost"]');
+                const originalIcon = deleteBtn.innerHTML;
+                deleteBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+                deleteBtn.disabled = true;
+                
+                fetch('delete_post.php', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ post_id: postId })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        // Animar la eliminación del post
+                        postElement.style.transition = 'all 0.3s ease-out';
+                        postElement.style.transform = 'translateX(-100%)';
+                        postElement.style.opacity = '0';
+                        
+                        setTimeout(() => {
+                            postElement.remove();
+                            
+                            // Mostrar mensaje de éxito
+                            showNotification('Publicación eliminada exitosamente', 'success');
+                            
+                            // Verificar si no quedan posts
+                            const remainingPosts = document.querySelectorAll('[data-post-id]');
+                            if (remainingPosts.length === 0) {
+                                location.reload(); // Recargar para mostrar el mensaje "No has publicado nada aún"
+                            }
+                        }, 300);
+                    } else {
+                        showNotification('Error al eliminar la publicación: ' + data.error, 'error');
+                        // Restaurar botón
+                        deleteBtn.innerHTML = originalIcon;
+                        deleteBtn.disabled = false;
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showNotification('Error al eliminar la publicación', 'error');
+                    // Restaurar botón
+                    deleteBtn.innerHTML = originalIcon;
+                    deleteBtn.disabled = false;
+                });
+            }
+        }
+
+        // Función para mostrar notificaciones
+        function showNotification(message, type = 'info') {
+            const notification = document.createElement('div');
+            notification.className = `fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg text-white max-w-sm ${
+                type === 'success' ? 'bg-green-500' : 
+                type === 'error' ? 'bg-red-500' : 
+                'bg-blue-500'
+            }`;
+            notification.innerHTML = `
+                <div class="flex items-center">
+                    <i class="fas ${
+                        type === 'success' ? 'fa-check-circle' : 
+                        type === 'error' ? 'fa-exclamation-circle' : 
+                        'fa-info-circle'
+                    } mr-2"></i>
+                    <span>${message}</span>
+                </div>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // Animar entrada
+            notification.style.transform = 'translateX(100%)';
+            notification.style.transition = 'transform 0.3s ease-out';
+            setTimeout(() => {
+                notification.style.transform = 'translateX(0)';
+            }, 10);
+            
+            // Eliminar después de 4 segundos
+            setTimeout(() => {
+                notification.style.transform = 'translateX(100%)';
+                setTimeout(() => {
+                    notification.remove();
+                }, 300);
+            }, 4000);
         }
     </script>
 </body>
