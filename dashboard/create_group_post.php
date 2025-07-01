@@ -15,14 +15,19 @@ if (!$group_id || !is_numeric($group_id) || empty(trim($content))) {
     exit();
 }
 
-// Verificar que el usuario es miembro del grupo
-if (!isGroupMember($_SESSION['user_id'], $group_id)) {
-    header('Location: groups.php');
-    exit();
-}
-
 $database = new Database();
 $db = $database->getConnection();
+
+// Verificar que el usuario es el creador del grupo
+$query = "SELECT creator_id FROM groups WHERE id = ?";
+$stmt = $db->prepare($query);
+$stmt->execute([$group_id]);
+$group = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if (!$group || $group['creator_id'] != $_SESSION['user_id']) {
+    header('Location: group_detail.php?id=' . $group_id . '&error=unauthorized');
+    exit();
+}
 
 try {
     // Crear el post en el grupo

@@ -195,8 +195,8 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <!-- Columna Principal - Posts -->
             <div class="lg:col-span-2 space-y-6">
-                <?php if ($is_member): ?>
-                    <!-- Crear Post en Grupo -->
+                <?php if ($group['creator_id'] == $_SESSION['user_id']): ?>
+                    <!-- Crear Post en Grupo (Solo para el creador) -->
                     <div class="bg-white rounded-lg shadow-md p-6">
                         <h3 class="text-lg font-semibold mb-4">Compartir en el grupo</h3>
                         <form action="create_group_post.php" method="POST" class="space-y-4">
