@@ -419,4 +419,91 @@ function deleteMediaFile($media_id, $user_id) {
     
     return false;
 }
+
+// ===== FUNCIONES PARA PÁGINAS =====
+
+// Función para verificar si un usuario es el creador de una página
+function isPageCreator($user_id, $page_id) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $query = "SELECT creator_id FROM pages WHERE id = ?";
+    $stmt = $db->prepare($query);
+    $stmt->execute([$page_id]);
+    $page = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    return $page && $page['creator_id'] == $user_id;
+}
+
+// Función para verificar si un usuario sigue una página
+function isPageFollower($user_id, $page_id) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $query = "SELECT id FROM page_followers WHERE page_id = ? AND user_id = ?";
+    $stmt = $db->prepare($query);
+    $stmt->execute([$page_id, $user_id]);
+    
+    return $stmt->fetch(PDO::FETCH_ASSOC) !== false;
+}
+
+// Función para contar seguidores de una página
+function getPageFollowersCount($page_id) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $query = "SELECT COUNT(*) FROM page_followers WHERE page_id = ?";
+    $stmt = $db->prepare($query);
+    $stmt->execute([$page_id]);
+    
+    return $stmt->fetchColumn();
+}
+
+// Función para contar posts de una página
+function getPagePostsCount($page_id) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $query = "SELECT COUNT(*) FROM page_posts WHERE page_id = ?";
+    $stmt = $db->prepare($query);
+    $stmt->execute([$page_id]);
+    
+    return $stmt->fetchColumn();
+}
+
+// Función para contar likes de un post de página
+function getPagePostLikesCount($page_post_id) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $query = "SELECT COUNT(*) FROM page_post_likes WHERE page_post_id = ?";
+    $stmt = $db->prepare($query);
+    $stmt->execute([$page_post_id]);
+    
+    return $stmt->fetchColumn();
+}
+
+// Función para contar comentarios de un post de página
+function getPagePostCommentsCount($page_post_id) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $query = "SELECT COUNT(*) FROM page_post_comments WHERE page_post_id = ?";
+    $stmt = $db->prepare($query);
+    $stmt->execute([$page_post_id]);
+    
+    return $stmt->fetchColumn();
+}
+
+// Función para verificar si un usuario ha dado like a un post de página
+function hasLikedPagePost($user_id, $page_post_id) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $query = "SELECT id FROM page_post_likes WHERE page_post_id = ? AND user_id = ?";
+    $stmt = $db->prepare($query);
+    $stmt->execute([$page_post_id, $user_id]);
+    
+    return $stmt->fetch(PDO::FETCH_ASSOC) !== false;
+}
 ?> 

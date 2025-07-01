@@ -93,6 +93,68 @@ CREATE TABLE messages (
     FOREIGN KEY (receiver_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Tabla de páginas
+CREATE TABLE pages (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    description TEXT,
+    profile_image VARCHAR(255) DEFAULT 'default-page.jpg',
+    cover_image VARCHAR(255) DEFAULT 'default-page-cover.jpg',
+    creator_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    is_active BOOLEAN DEFAULT TRUE,
+    FOREIGN KEY (creator_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Tabla de seguidores de páginas
+CREATE TABLE page_followers (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    page_id INT NOT NULL,
+    user_id INT NOT NULL,
+    followed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_follower (page_id, user_id)
+);
+
+-- Tabla de posts en páginas
+CREATE TABLE page_posts (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    page_id INT NOT NULL,
+    user_id INT NOT NULL,
+    content TEXT NOT NULL,
+    media_type ENUM('image', 'video') NULL,
+    media_url VARCHAR(255) NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (page_id) REFERENCES pages(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+-- Tabla de likes en posts de páginas
+CREATE TABLE page_post_likes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    page_post_id INT NOT NULL,
+    user_id INT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (page_post_id) REFERENCES page_posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_like (page_post_id, user_id)
+);
+
+-- Tabla de comentarios en posts de páginas
+CREATE TABLE page_post_comments (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    page_post_id INT NOT NULL,
+    user_id INT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (page_post_id) REFERENCES page_posts(id) ON DELETE CASCADE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Insertar algunos grupos de ejemplo
 INSERT INTO groups (name, description, creator_id, privacy) VALUES
 ('Desarrolladores PHP', 'Grupo para desarrolladores que trabajan con PHP y tecnologías web', 1, 'public'),

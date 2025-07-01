@@ -94,6 +94,9 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
                         <a href="groups.php" class="py-4 px-2 text-indigo-500 border-b-4 border-indigo-500 font-semibold">
                             <i class="fas fa-users mr-1"></i>Grupos
                         </a>
+                        <a href="pages.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
+                            <i class="fas fa-flag mr-1"></i>Páginas
+                        </a>
                         <a href="messages.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300 relative">
                             <i class="fas fa-envelope mr-1"></i>Mensajes
                             <?php if ($unread_messages > 0): ?>

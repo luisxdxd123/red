@@ -60,6 +60,8 @@ $following_count = $stmt->fetchColumn();
                     <div class="hidden md:flex items-center space-x-1">
                         <a href="index.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">Inicio</a>
                         <a href="profile.php" class="py-4 px-2 text-indigo-500 border-b-4 border-indigo-500 font-semibold">Mi Perfil</a>
+                        <a href="groups.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">Grupos</a>
+                        <a href="pages.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">Páginas</a>
                         <a href="users.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">Usuarios</a>
                     </div>
                 </div>
