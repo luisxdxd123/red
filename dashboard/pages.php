@@ -5,6 +5,18 @@ requireLogin();
 $database = new Database();
 $db = $database->getConnection();
 
+// Verificar permisos del usuario
+$query = "SELECT is_admin, can_create_pages FROM users WHERE id = ?";
+$stmt = $db->prepare($query);
+$stmt->execute([$_SESSION['user_id']]);
+$user_permissions = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// Verificar si hay una solicitud pendiente
+$query = "SELECT status FROM page_requests WHERE user_id = ? AND status = 'pending'";
+$stmt = $db->prepare($query);
+$stmt->execute([$_SESSION['user_id']]);
+$pending_request = $stmt->fetch(PDO::FETCH_ASSOC);
+
 // Obtener todas las páginas
 $query = "SELECT p.*, u.first_name, u.last_name, u.username,
           (SELECT COUNT(*) FROM page_followers WHERE page_id = p.id) as followers_count,
@@ -65,6 +77,11 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
                         <a href="users.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
                             <i class="fas fa-user-friends mr-1"></i>Usuarios
                         </a>
+                        <?php if ($user_permissions['is_admin']): ?>
+                            <a href="admin_page_requests.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
+                                <i class="fas fa-tasks mr-1"></i>Solicitudes
+                            </a>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <div class="flex items-center space-x-3">
@@ -85,10 +102,27 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
                     <h1 class="text-2xl font-bold text-gray-900 mb-2">Páginas</h1>
                     <p class="text-gray-600">Descubre y sigue páginas interesantes</p>
                 </div>
-                <button onclick="openCreatePageModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
-                    <i class="fas fa-plus mr-2"></i>Crear Página
-                </button>
+                <?php if ($user_permissions['can_create_pages']): ?>
+                    <button onclick="openCreatePageModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
+                        <i class="fas fa-plus mr-2"></i>Crear Página
+                    </button>
+                <?php elseif ($pending_request): ?>
+                    <div class="text-yellow-600">
+                        <i class="fas fa-clock mr-2"></i>Solicitud en Revisión
+                    </div>
+                <?php else: ?>
+                    <a href="request_page_access.php" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
+                        <i class="fas fa-unlock mr-2"></i>Solicitar Acceso
+                    </a>
+                <?php endif; ?>
             </div>
+
+            <?php if (isset($_GET['request_sent']) && $_GET['request_sent'] == 1): ?>
+                <div class="mt-4 bg-green-100 border-l-4 border-green-500 text-green-700 p-4">
+                    <p class="font-bold">¡Solicitud enviada con éxito!</p>
+                    <p>Tu solicitud será revisada por nuestros administradores. Te notificaremos cuando sea aprobada.</p>
+                </div>
+            <?php endif; ?>
         </div>
 
         <!-- Grid de Páginas -->
@@ -179,14 +213,24 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
             <div class="bg-white rounded-lg shadow-md p-8 text-center">
                 <i class="fas fa-flag text-gray-400 text-4xl mb-4"></i>
                 <h3 class="text-xl font-semibold text-gray-600 mb-2">No hay páginas disponibles</h3>
-                <p class="text-gray-500 mb-4">¡Sé el primero en crear una página!</p>
-                <button onclick="openCreatePageModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
-                    <i class="fas fa-plus mr-2"></i>Crear Primera Página
-                </button>
+                <?php if ($user_permissions['can_create_pages']): ?>
+                    <p class="text-gray-500 mb-4">¡Sé el primero en crear una página!</p>
+                    <button onclick="openCreatePageModal()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
+                        <i class="fas fa-plus mr-2"></i>Crear Primera Página
+                    </button>
+                <?php else: ?>
+                    <p class="text-gray-500 mb-4">Para crear páginas, necesitas solicitar acceso primero.</p>
+                    <?php if (!$pending_request): ?>
+                        <a href="request_page_access.php" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300 inline-block">
+                            <i class="fas fa-unlock mr-2"></i>Solicitar Acceso
+                        </a>
+                    <?php endif; ?>
+                <?php endif; ?>
             </div>
         <?php endif; ?>
     </div>
 
+    <?php if ($user_permissions['can_create_pages']): ?>
     <!-- Modal para Crear Página -->
     <div id="createPageModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden">
         <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
@@ -239,6 +283,7 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
             </div>
         </div>
     </div>
+    <?php endif; ?>
 
     <script>
         // Modal functions

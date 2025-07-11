@@ -6,7 +6,10 @@ $database = new Database();
 $db = $database->getConnection();
 
 // Obtener posts con información del usuario
-$query = "SELECT p.*, u.username, u.first_name, u.last_name, u.profile_picture 
+$query = "SELECT p.*, u.username, u.first_name, u.last_name, u.profile_picture,
+          CASE WHEN EXISTS (
+              SELECT 1 FROM post_media pm WHERE pm.post_id = p.id
+          ) THEN 1 ELSE 0 END as has_media 
           FROM posts p 
           JOIN users u ON p.user_id = u.id 
           ORDER BY p.created_at DESC 
@@ -17,6 +20,7 @@ $posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // Obtener medios para cada post que los tenga
 foreach ($posts as &$post) {
+    $post['has_media'] = (bool)$post['has_media'];
     if ($post['has_media']) {
         $post['media'] = getPostMedia($post['id']);
     } else {

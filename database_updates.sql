@@ -155,6 +155,29 @@ CREATE TABLE page_post_comments (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Actualizaciones para el sistema de solicitudes de páginas
+
+-- Agregar campo is_admin a la tabla users
+ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
+
+-- Agregar campo can_create_pages a la tabla users
+ALTER TABLE users ADD COLUMN can_create_pages BOOLEAN DEFAULT FALSE;
+
+-- Actualizar el usuario admin existente
+UPDATE users SET is_admin = TRUE WHERE username = 'admin';
+
+-- Crear tabla para solicitudes de páginas
+CREATE TABLE page_requests (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    payment_proof VARCHAR(255) NOT NULL,
+    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    response_date TIMESTAMP NULL,
+    admin_notes TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Insertar algunos grupos de ejemplo
 INSERT INTO groups (name, description, creator_id, privacy) VALUES
 ('Desarrolladores PHP', 'Grupo para desarrolladores que trabajan con PHP y tecnologías web', 1, 'public'),
