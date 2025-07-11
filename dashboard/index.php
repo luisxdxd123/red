@@ -5,6 +5,15 @@ requireLogin();
 $database = new Database();
 $db = $database->getConnection();
 
+// Obtener permisos del usuario y verificar membresía
+$user_permissions = getUserPermissions($_SESSION['user_id']);
+$unread_messages = 0;
+
+// Solo obtener mensajes no leídos si el usuario tiene acceso a mensajes
+if ($user_permissions['can_access_messages']) {
+    $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
+}
+
 // Obtener posts con información del usuario
 $query = "SELECT p.*, u.username, u.first_name, u.last_name, u.profile_picture,
           CASE WHEN EXISTS (
@@ -27,9 +36,6 @@ foreach ($posts as &$post) {
         $post['media'] = [];
     }
 }
-
-// Obtener número de mensajes no leídos
-$unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
 ?>
 
 <!DOCTYPE html>
@@ -42,50 +48,7 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="bg-gray-100 min-h-screen">
-    <!-- Navbar -->
-    <nav class="bg-white shadow-lg sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4">
-            <div class="flex justify-between">
-                <div class="flex space-x-7">
-                    <div class="flex items-center py-4">
-                        <i class="fas fa-users text-indigo-600 text-2xl mr-2"></i>
-                        <span class="font-semibold text-gray-500 text-lg">Red Social</span>
-                    </div>
-                    <div class="hidden md:flex items-center space-x-1">
-                        <a href="index.php" class="py-4 px-2 text-indigo-500 border-b-4 border-indigo-500 font-semibold">
-                            <i class="fas fa-home mr-1"></i>Inicio
-                        </a>
-                        <a href="groups.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
-                            <i class="fas fa-users mr-1"></i>Grupos
-                        </a>
-                        <a href="pages.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
-                            <i class="fas fa-flag mr-1"></i>Páginas
-                        </a>
-                        <a href="messages.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300 relative">
-                            <i class="fas fa-envelope mr-1"></i>Mensajes
-                            <?php if ($unread_messages > 0): ?>
-                                <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                                    <?php echo $unread_messages > 9 ? '9+' : $unread_messages; ?>
-                                </span>
-                            <?php endif; ?>
-                        </a>
-                        <a href="profile.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
-                            <i class="fas fa-user mr-1"></i>Mi Perfil
-                        </a>
-                        <a href="users.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
-                            <i class="fas fa-user-friends mr-1"></i>Usuarios
-                        </a>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-3">
-                    <span class="text-gray-700">Hola, <?php echo $_SESSION['first_name']; ?>!</span>
-                    <a href="../auth/logout.php" class="py-2 px-2 font-medium text-gray-500 rounded hover:bg-red-500 hover:text-white transition duration-300">
-                        <i class="fas fa-sign-out-alt"></i> Salir
-                    </a>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?php include '../includes/navbar.php'; ?>
 
     <!-- Notificaciones -->
     <?php if (isset($_SESSION['success'])): ?>
@@ -108,6 +71,26 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
         <div class="max-w-4xl mx-auto px-4 pt-4">
             <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4" role="alert">
                 <span class="block sm:inline"><?php echo $_SESSION['error']; unset($_SESSION['error']); ?></span>
+            </div>
+        </div>
+    <?php endif; ?>
+
+    <!-- Banner informativo sobre membresías -->
+    <?php if ($user_permissions['membership_type'] === 'basico'): ?>
+        <div class="max-w-4xl mx-auto px-4 pt-4">
+            <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg p-6 text-white mb-6">
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <i class="fas fa-crown text-yellow-300 text-3xl mr-4"></i>
+                        <div>
+                            <h3 class="text-xl font-bold mb-1">¡Mejora tu experiencia!</h3>
+                            <p class="text-indigo-100">Desbloquea grupos, mensajes y páginas con nuestras membresías Premium y VIP</p>
+                        </div>
+                    </div>
+                    <a href="memberships.php" class="bg-white text-indigo-600 font-bold py-2 px-6 rounded-lg hover:bg-gray-100 transition duration-300">
+                        Ver Planes
+                    </a>
+                </div>
             </div>
         </div>
     <?php endif; ?>

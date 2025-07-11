@@ -506,4 +506,222 @@ function hasLikedPagePost($user_id, $page_post_id) {
     
     return $stmt->fetch(PDO::FETCH_ASSOC) !== false;
 }
+
+// ===== FUNCIONES PARA SISTEMA DE MEMBRESÍAS =====
+
+// Función para obtener la membresía actual del usuario
+function getUserMembership($user_id) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $query = "SELECT membership_type, membership_expires_at, membership_created_at, is_admin, can_create_pages FROM users WHERE id = ?";
+    $stmt = $db->prepare($query);
+    $stmt->execute([$user_id]);
+    
+    return $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+// Función para verificar si la membresía está activa
+function isMembershipActive($user_id) {
+    $membership = getUserMembership($user_id);
+    
+    if (!$membership) {
+        return false;
+    }
+    
+    // Si es básica, siempre está activa
+    if ($membership['membership_type'] === 'basico') {
+        return true;
+    }
+    
+    // Para membresías premium y VIP, verificar fecha de expiración
+    if ($membership['membership_expires_at']) {
+        return strtotime($membership['membership_expires_at']) > time();
+    }
+    
+    return false;
+}
+
+// Función para obtener permisos según la membresía
+function getUserPermissions($user_id) {
+    $membership = getUserMembership($user_id);
+    $isActive = isMembershipActive($user_id);
+    
+    $permissions = [
+        'can_access_timeline' => true,
+        'can_access_profile' => true,
+        'can_access_users' => true,
+        'can_access_groups' => false,
+        'can_access_messages' => false,
+        'can_access_pages' => false,
+        'can_create_pages' => false,
+        'is_admin' => (bool)($membership['is_admin'] ?? false),
+        'membership_type' => $membership['membership_type'] ?? 'basico'
+    ];
+    
+    if (!$isActive) {
+        // Si la membresía expiró, volver a básica
+        if ($membership['membership_type'] !== 'basico') {
+            updateUserMembership($user_id, 'basico');
+            $permissions['membership_type'] = 'basico';
+        }
+        // Mantener permisos de admin y crear páginas independientemente de la membresía
+        $permissions['can_create_pages'] = (bool)($membership['can_create_pages'] ?? false);
+        return $permissions;
+    }
+    
+    switch ($membership['membership_type']) {
+        case 'premium':
+            $permissions['can_access_groups'] = true;
+            $permissions['can_access_messages'] = true;
+            break;
+        case 'vip':
+            $permissions['can_access_groups'] = true;
+            $permissions['can_access_messages'] = true;
+            $permissions['can_access_pages'] = true;
+            $permissions['can_create_pages'] = true;
+            break;
+    }
+    
+    // Sobrescribir can_create_pages si el usuario tiene permisos específicos
+    if ($membership['can_create_pages']) {
+        $permissions['can_create_pages'] = true;
+        $permissions['can_access_pages'] = true;
+    }
+    
+    return $permissions;
+}
+
+// Función para actualizar la membresía del usuario
+function updateUserMembership($user_id, $membership_type, $duration_months = 1) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $expires_at = null;
+    if ($membership_type !== 'basico') {
+        $expires_at = date('Y-m-d H:i:s', strtotime("+{$duration_months} months"));
+    }
+    
+    $query = "UPDATE users SET 
+              membership_type = ?, 
+              membership_expires_at = ?, 
+              membership_created_at = NOW() 
+              WHERE id = ?";
+    $stmt = $db->prepare($query);
+    
+    return $stmt->execute([$membership_type, $expires_at, $user_id]);
+}
+
+// Función para registrar pago de membresía
+function recordMembershipPayment($user_id, $membership_type, $amount, $payment_method = 'cash', $payment_reference = null) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $query = "INSERT INTO membership_payments 
+              (user_id, membership_type, amount, payment_method, payment_reference, status, paid_at) 
+              VALUES (?, ?, ?, ?, ?, 'completed', NOW())";
+    $stmt = $db->prepare($query);
+    
+    return $stmt->execute([$user_id, $membership_type, $amount, $payment_method, $payment_reference]);
+}
+
+// Función para obtener los tipos de membresías disponibles
+function getMembershipTypes() {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $query = "SELECT * FROM membership_types WHERE is_active = 1 ORDER BY price ASC";
+    $stmt = $db->prepare($query);
+    $stmt->execute();
+    
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// Función para procesar una compra de membresía
+function processMembershipPurchase($user_id, $membership_type) {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    // Obtener información del tipo de membresía
+    $query = "SELECT * FROM membership_types WHERE name = ? AND is_active = 1";
+    $stmt = $db->prepare($query);
+    $stmt->execute([$membership_type]);
+    $membershipInfo = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if (!$membershipInfo) {
+        return ['success' => false, 'message' => 'Tipo de membresía no válido'];
+    }
+    
+    try {
+        $db->beginTransaction();
+        
+        // Actualizar membresía del usuario
+        $success = updateUserMembership($user_id, $membership_type, $membershipInfo['duration_months']);
+        
+        if (!$success) {
+            throw new Exception('Error al actualizar la membresía');
+        }
+        
+        // Registrar el pago
+        $paymentSuccess = recordMembershipPayment(
+            $user_id, 
+            $membership_type, 
+            $membershipInfo['price'], 
+            'cash', 
+            'Compra directa - ' . date('Y-m-d H:i:s')
+        );
+        
+        if (!$paymentSuccess) {
+            throw new Exception('Error al registrar el pago');
+        }
+        
+        $db->commit();
+        
+        return [
+            'success' => true, 
+            'message' => 'Membresía actualizada exitosamente',
+            'membership_type' => $membership_type,
+            'expires_at' => date('Y-m-d H:i:s', strtotime("+{$membershipInfo['duration_months']} months"))
+        ];
+        
+    } catch (Exception $e) {
+        $db->rollback();
+        return ['success' => false, 'message' => 'Error al procesar la compra: ' . $e->getMessage()];
+    }
+}
+
+// Función para verificar acceso a una funcionalidad específica
+function hasAccess($user_id, $feature) {
+    $permissions = getUserPermissions($user_id);
+    
+    switch ($feature) {
+        case 'groups':
+            return $permissions['can_access_groups'];
+        case 'messages':
+            return $permissions['can_access_messages'];
+        case 'pages':
+            return $permissions['can_access_pages'];
+        case 'create_pages':
+            return $permissions['can_create_pages'];
+        default:
+            return true; // Funciones básicas siempre disponibles
+    }
+}
+
+// Función para obtener estadísticas de membresías (para admin)
+function getMembershipStats() {
+    $database = new Database();
+    $db = $database->getConnection();
+    
+    $query = "SELECT 
+                membership_type,
+                COUNT(*) as total_users,
+                SUM(CASE WHEN membership_expires_at > NOW() OR membership_type = 'basico' THEN 1 ELSE 0 END) as active_users
+              FROM users 
+              GROUP BY membership_type";
+    $stmt = $db->prepare($query);
+    $stmt->execute();
+    
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
 ?> 

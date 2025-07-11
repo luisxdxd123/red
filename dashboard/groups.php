@@ -2,6 +2,14 @@
 require_once '../includes/functions.php';
 requireLogin();
 
+// Verificar que el usuario tenga acceso a grupos
+$user_permissions = getUserPermissions($_SESSION['user_id']);
+if (!$user_permissions['can_access_groups']) {
+    $_SESSION['warning'] = 'Necesitas una membresía Premium o VIP para acceder a los grupos.';
+    header('Location: memberships.php');
+    exit();
+}
+
 $database = new Database();
 $db = $database->getConnection();
 
@@ -19,8 +27,11 @@ $stmt = $db->prepare($query);
 $stmt->execute([$_SESSION['user_id']]);
 $groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// Obtener número de mensajes no leídos
-$unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
+// Obtener número de mensajes no leídos solo si tiene acceso
+$unread_messages = 0;
+if ($user_permissions['can_access_messages']) {
+    $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
+}
 ?>
 
 <!DOCTYPE html>
@@ -33,47 +44,7 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="bg-gray-100 min-h-screen">
-    <!-- Navbar -->
-    <nav class="bg-white shadow-lg sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4">
-            <div class="flex justify-between">
-                <div class="flex space-x-7">
-                    <div class="flex items-center py-4">
-                        <i class="fas fa-users text-indigo-600 text-2xl mr-2"></i>
-                        <span class="font-semibold text-gray-500 text-lg">Red Social</span>
-                    </div>
-                    <div class="hidden md:flex items-center space-x-1">
-                        <a href="index.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
-                            <i class="fas fa-home mr-1"></i>Inicio
-                        </a>
-                        <a href="groups.php" class="py-4 px-2 text-indigo-500 border-b-4 border-indigo-500 font-semibold">
-                            <i class="fas fa-users mr-1"></i>Grupos
-                        </a>
-                        <a href="messages.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300 relative">
-                            <i class="fas fa-envelope mr-1"></i>Mensajes
-                            <?php if ($unread_messages > 0): ?>
-                                <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                                    <?php echo $unread_messages > 9 ? '9+' : $unread_messages; ?>
-                                </span>
-                            <?php endif; ?>
-                        </a>
-                        <a href="profile.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
-                            <i class="fas fa-user mr-1"></i>Mi Perfil
-                        </a>
-                        <a href="users.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
-                            <i class="fas fa-user-friends mr-1"></i>Usuarios
-                        </a>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-3">
-                    <span class="text-gray-700">Hola, <?php echo $_SESSION['first_name']; ?>!</span>
-                    <a href="../auth/logout.php" class="py-2 px-2 font-medium text-gray-500 rounded hover:bg-red-500 hover:text-white transition duration-300">
-                        <i class="fas fa-sign-out-alt"></i> Salir
-                    </a>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?php include '../includes/navbar.php'; ?>
 
     <div class="max-w-6xl mx-auto px-4 py-8">
         <!-- Header -->

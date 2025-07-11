@@ -2,6 +2,15 @@
 require_once '../includes/functions.php';
 requireLogin();
 
+// Obtener permisos del usuario
+$user_permissions = getUserPermissions($_SESSION['user_id']);
+$unread_messages = 0;
+
+// Solo obtener mensajes no leídos si el usuario tiene acceso a mensajes
+if ($user_permissions['can_access_messages']) {
+    $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
+}
+
 $database = new Database();
 $db = $database->getConnection();
 
@@ -48,32 +57,7 @@ $following_count = $stmt->fetchColumn();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="bg-gray-100 min-h-screen">
-    <!-- Navbar -->
-    <nav class="bg-white shadow-lg sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4">
-            <div class="flex justify-between">
-                <div class="flex space-x-7">
-                    <div class="flex items-center py-4">
-                        <i class="fas fa-users text-indigo-600 text-2xl mr-2"></i>
-                        <span class="font-semibold text-gray-500 text-lg">Red Social</span>
-                    </div>
-                    <div class="hidden md:flex items-center space-x-1">
-                        <a href="index.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">Inicio</a>
-                        <a href="profile.php" class="py-4 px-2 text-indigo-500 border-b-4 border-indigo-500 font-semibold">Mi Perfil</a>
-                        <a href="groups.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">Grupos</a>
-                        <a href="pages.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">Páginas</a>
-                        <a href="users.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">Usuarios</a>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-3">
-                    <span class="text-gray-700">Hola, <?php echo $_SESSION['first_name']; ?>!</span>
-                    <a href="../auth/logout.php" class="py-2 px-2 font-medium text-gray-500 rounded hover:bg-red-500 hover:text-white transition duration-300">
-                        <i class="fas fa-sign-out-alt"></i> Salir
-                    </a>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?php include '../includes/navbar.php'; ?>
 
     <div class="max-w-4xl mx-auto px-4 py-8">
         <!-- Información del Perfil -->
