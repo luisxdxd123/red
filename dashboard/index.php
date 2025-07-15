@@ -5,6 +5,12 @@ requireLogin();
 $database = new Database();
 $db = $database->getConnection();
 
+// Obtener información del usuario actual incluyendo el avatar
+$query = "SELECT u.*, COALESCE(u.avatar_url, '') as avatar_url FROM users u WHERE u.id = ?";
+$stmt = $db->prepare($query);
+$stmt->execute([$_SESSION['user_id']]);
+$current_user = $stmt->fetch(PDO::FETCH_ASSOC);
+
 // Obtener permisos del usuario y verificar membresía
 $user_permissions = getUserPermissions($_SESSION['user_id']);
 $unread_messages = 0;
@@ -15,7 +21,7 @@ if ($user_permissions['can_access_messages']) {
 }
 
 // Obtener posts con información del usuario
-$query = "SELECT p.*, u.username, u.first_name, u.last_name, u.profile_picture,
+$query = "SELECT p.*, u.username, u.first_name, u.last_name, u.avatar_url,
           CASE WHEN EXISTS (
               SELECT 1 FROM post_media pm WHERE pm.post_id = p.id
           ) THEN 1 ELSE 0 END as has_media 
@@ -36,6 +42,19 @@ foreach ($posts as &$post) {
         $post['media'] = [];
     }
 }
+
+// Obtener las 5 publicaciones más populares para tendencias
+$trending_query = "SELECT p.*, u.username, u.first_name, u.last_name, u.avatar_url,
+                    COUNT(pl.id) as likes_count
+                  FROM posts p 
+                  JOIN users u ON p.user_id = u.id
+                  LEFT JOIN post_likes pl ON p.id = pl.post_id
+                  GROUP BY p.id, u.id
+                  ORDER BY likes_count DESC, p.created_at DESC
+                  LIMIT 5";
+$stmt = $db->prepare($trending_query);
+$stmt->execute();
+$trending_posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -47,235 +66,426 @@ foreach ($posts as &$post) {
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
-<body class="bg-gray-100 min-h-screen">
+<body class="bg-gray-50">
     <?php include '../includes/navbar.php'; ?>
 
-    <!-- Notificaciones -->
-    <?php if (isset($_SESSION['success'])): ?>
-        <div class="max-w-4xl mx-auto px-4 pt-4">
-            <div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-4" role="alert">
-                <span class="block sm:inline"><?php echo $_SESSION['success']; unset($_SESSION['success']); ?></span>
-            </div>
-        </div>
-    <?php endif; ?>
-
-    <?php if (isset($_SESSION['warning'])): ?>
-        <div class="max-w-4xl mx-auto px-4 pt-4">
-            <div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4" role="alert">
-                <span class="block sm:inline"><?php echo $_SESSION['warning']; unset($_SESSION['warning']); ?></span>
-            </div>
-        </div>
-    <?php endif; ?>
-
-    <?php if (isset($_SESSION['error'])): ?>
-        <div class="max-w-4xl mx-auto px-4 pt-4">
-            <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4" role="alert">
-                <span class="block sm:inline"><?php echo $_SESSION['error']; unset($_SESSION['error']); ?></span>
-            </div>
-        </div>
-    <?php endif; ?>
-
-    <!-- Banner informativo sobre membresías -->
-    <?php if ($user_permissions['membership_type'] === 'basico'): ?>
-        <div class="max-w-4xl mx-auto px-4 pt-4">
-            <div class="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg p-6 text-white mb-6">
-                <div class="flex items-center justify-between">
-                    <div class="flex items-center">
-                        <i class="fas fa-crown text-yellow-300 text-3xl mr-4"></i>
+    <div class="max-w-screen-xl mx-auto px-4 py-4 sm:px-6 lg:px-8">
+        <div class="flex flex-col lg:flex-row gap-6">
+            <!-- Columna Izquierda - Perfil y Estadísticas -->
+            <div class="lg:w-1/4 space-y-4">
+                <!-- Tarjeta de Perfil -->
+                <div class="bg-white rounded-xl shadow-sm p-4">
+                    <div class="flex items-center space-x-3">
+                        <?php if ($current_user['avatar_url']): ?>
+                            <img src="<?php echo htmlspecialchars($current_user['avatar_url']); ?>" 
+                                 alt="Tu avatar" 
+                                 class="w-12 h-12 rounded-full object-cover">
+                        <?php else: ?>
+                            <div class="w-12 h-12 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                                <?php echo strtoupper(substr($current_user['first_name'], 0, 1)); ?>
+                            </div>
+                        <?php endif; ?>
                         <div>
-                            <h3 class="text-xl font-bold mb-1">¡Mejora tu experiencia!</h3>
-                            <p class="text-indigo-100">Desbloquea grupos, mensajes y páginas con nuestras membresías Premium y VIP</p>
+                            <h2 class="font-semibold text-gray-800"><?php echo $current_user['first_name'] . ' ' . $current_user['last_name']; ?></h2>
+                            <p class="text-sm text-gray-500">@<?php echo $current_user['username']; ?></p>
                         </div>
                     </div>
-                    <a href="memberships.php" class="bg-white text-indigo-600 font-bold py-2 px-6 rounded-lg hover:bg-gray-100 transition duration-300">
-                        Ver Planes
+                    <a href="profile.php" class="mt-3 block text-sm text-blue-600 hover:text-blue-700 font-medium">
+                        <i class="fas fa-user-edit mr-1"></i>Editar perfil
                     </a>
                 </div>
-            </div>
-        </div>
-    <?php endif; ?>
 
-    <div class="max-w-4xl mx-auto px-4 py-8">
-        <!-- Crear Post -->
-        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-            <h3 class="text-lg font-semibold mb-4">¿Qué estás pensando?</h3>
-            <form action="create_post.php" method="POST" enctype="multipart/form-data" class="space-y-4">
-                <textarea name="content" placeholder="Comparte algo interesante..." 
-                          class="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none" 
-                          rows="3"></textarea>
-                
-                <!-- Sección de archivos multimedia -->
-                <div class="border-2 border-dashed border-gray-300 rounded-lg p-4">
-                    <div class="text-center">
-                        <i class="fas fa-cloud-upload-alt text-gray-400 text-3xl mb-2"></i>
-                        <p class="text-gray-600 mb-2">Arrastra archivos aquí o haz clic para seleccionar</p>
-                        <p class="text-sm text-gray-500">Máximo 10 archivos. Imágenes (JPG, PNG, GIF, WebP) hasta 10MB. Videos (MP4, WebM, MOV, AVI) hasta 100MB.</p>
+                <!-- Banner de Membresía -->
+                <?php if ($user_permissions['membership_type'] === 'basico'): ?>
+                <div class="bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl shadow-sm p-4 text-white">
+                    <div class="flex items-center space-x-3 mb-3">
+                        <i class="fas fa-crown text-yellow-300 text-2xl"></i>
+                        <h3 class="font-semibold">Mejora tu experiencia</h3>
                     </div>
-                    <input type="file" name="media[]" multiple accept="image/*,video/*" 
-                           id="media-input" class="hidden" onchange="previewFiles(this)">
-                    <button type="button" onclick="document.getElementById('media-input').click()" 
-                            class="w-full mt-2 bg-gray-100 hover:bg-gray-200 text-gray-700 py-2 px-4 rounded-lg transition duration-300">
-                        <i class="fas fa-plus mr-2"></i>Seleccionar archivos
-                    </button>
+                    <p class="text-sm text-blue-100 mb-3">Desbloquea todas las funciones con una membresía premium</p>
+                    <a href="memberships.php" class="inline-block w-full bg-white text-blue-600 text-center text-sm font-medium py-2 px-4 rounded-lg hover:bg-blue-50 transition-colors duration-200">
+                        Ver planes
+                    </a>
                 </div>
-                
-                <!-- Vista previa de archivos -->
-                <div id="media-preview" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 hidden"></div>
-                
-                <!-- Botones de acción -->
-                <div class="flex justify-between items-center">
-                    <button type="button" onclick="clearFiles()" id="clear-btn" 
-                            class="text-red-600 hover:text-red-800 transition duration-300 hidden">
-                        <i class="fas fa-trash mr-1"></i>Limpiar archivos
-                    </button>
-                    <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-lg transition duration-300">
-                        <i class="fas fa-paper-plane mr-2"></i>Publicar
-                    </button>
-                </div>
-            </form>
-        </div>
+                <?php endif; ?>
 
-        <!-- Posts Timeline -->
-        <div class="space-y-6">
-            <?php foreach ($posts as $post): ?>
-                <div class="bg-white rounded-lg shadow-md p-6" data-post-id="<?php echo $post['id']; ?>">
-                    <!-- Header del Post -->
-                    <div class="flex items-center mb-4">
-                        <div class="w-10 h-10 rounded-full bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-center text-white font-bold text-sm">
-                            <?php echo strtoupper(substr($post['first_name'], 0, 1) . substr($post['last_name'], 0, 1)); ?>
-                        </div>
-                        <div class="ml-3 flex-1">
-                            <h4 class="font-semibold text-gray-900"><?php echo $post['first_name'] . ' ' . $post['last_name']; ?></h4>
-                            <p class="text-sm text-gray-500">@<?php echo $post['username']; ?> • <?php echo timeAgo($post['created_at']); ?></p>
-                        </div>
-                        <div class="flex space-x-2">
-                            <?php if ($post['user_id'] == $_SESSION['user_id']): ?>
-                                <!-- Botón eliminar para el propietario del post -->
-                                <button onclick="deletePost(<?php echo $post['id']; ?>)" 
-                                        class="text-gray-500 hover:text-red-500 transition duration-300" 
-                                        title="Eliminar publicación">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            <?php elseif (isFollowing($_SESSION['user_id'], $post['user_id'])): ?>
-                                <a href="messages.php?user=<?php echo $post['user_id']; ?>" 
-                                   class="text-gray-500 hover:text-indigo-500 transition duration-300" 
-                                   title="Enviar mensaje">
-                                    <i class="fas fa-envelope"></i>
-                                </a>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-
-                    <!-- Contenido del Post -->
-                    <div class="mb-4">
-                        <?php if (!empty($post['content'])): ?>
-                            <p class="text-gray-800 leading-relaxed mb-4"><?php echo nl2br(htmlspecialchars($post['content'])); ?></p>
+                <!-- Enlaces Rápidos -->
+                <div class="bg-white rounded-xl shadow-sm p-4">
+                    <h3 class="font-semibold text-gray-800 mb-3">Enlaces Rápidos</h3>
+                    <div class="space-y-2">
+                        <?php if ($user_permissions['can_access_groups']): ?>
+                        <a href="groups.php" class="flex items-center text-gray-700 hover:text-blue-600 transition-colors duration-200">
+                            <i class="fas fa-users w-5"></i>
+                            <span>Grupos</span>
+                        </a>
+                        <?php else: ?>
+                        <a href="memberships.php" class="flex items-center text-gray-700 hover:text-blue-600 transition-colors duration-200">
+                            <i class="fas fa-users w-5"></i>
+                            <span>Grupos</span>
+                            <span class="ml-auto text-xs text-blue-600">
+                                <i class="fas fa-crown"></i> Premium
+                            </span>
+                        </a>
                         <?php endif; ?>
-                        
-                        <!-- Medios del Post -->
-                        <?php if (!empty($post['media'])): ?>
-                            <div class="media-grid">
-                                <?php 
-                                $media_count = count($post['media']);
-                                $grid_class = '';
-                                if ($media_count == 1) {
-                                    $grid_class = 'grid-cols-1';
-                                } elseif ($media_count == 2) {
-                                    $grid_class = 'grid-cols-2';
-                                } elseif ($media_count == 3) {
-                                    $grid_class = 'grid-cols-2';
-                                } elseif ($media_count >= 4) {
-                                    $grid_class = 'grid-cols-2';
-                                }
-                                ?>
-                                <div class="grid <?php echo $grid_class; ?> gap-2 rounded-lg overflow-hidden">
-                                    <?php 
-                                    $display_count = min($media_count, 4);
-                                    for ($i = 0; $i < $display_count; $i++): 
-                                        $media = $post['media'][$i];
-                                        $remaining = $media_count - 4;
-                                    ?>
-                                        <div class="relative <?php echo ($media_count == 3 && $i == 0) ? 'row-span-2' : ''; ?> group cursor-pointer" 
-                                             onclick="openMediaModal(<?php echo $post['id']; ?>, <?php echo $i; ?>)">
-                                            
-                                            <?php if ($media['file_type'] == 'image'): ?>
-                                                <img src="<?php echo htmlspecialchars($media['file_path']); ?>" 
-                                                     alt="Imagen de la publicación" 
-                                                     class="w-full h-full object-cover <?php echo ($media_count == 1) ? 'max-h-96' : 'h-32 md:h-40'; ?> transition-transform group-hover:scale-105">
-                                            <?php elseif ($media['file_type'] == 'video'): ?>
-                                                <div class="relative">
-                                                    <video class="w-full h-full object-cover <?php echo ($media_count == 1) ? 'max-h-96' : 'h-32 md:h-40'; ?>" 
-                                                           preload="metadata">
-                                                        <source src="<?php echo htmlspecialchars($media['file_path']); ?>" 
-                                                                type="<?php echo htmlspecialchars($media['mime_type']); ?>">
-                                                    </video>
-                                                    <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 transition-opacity group-hover:bg-opacity-50">
-                                                        <i class="fas fa-play text-white text-2xl"></i>
-                                                    </div>
-                                                </div>
-                                            <?php endif; ?>
-                                            
-                                            <!-- Mostrar contador si hay más de 4 medios -->
-                                            <?php if ($i == 3 && $remaining > 0): ?>
-                                                <div class="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center">
-                                                    <span class="text-white text-xl font-bold">+<?php echo $remaining; ?></span>
-                                                </div>
-                                            <?php endif; ?>
-                                        </div>
-                                    <?php endfor; ?>
+
+                        <?php if ($user_permissions['can_access_pages']): ?>
+                        <a href="pages.php" class="flex items-center text-gray-700 hover:text-blue-600 transition-colors duration-200">
+                            <i class="fas fa-flag w-5"></i>
+                            <span>Páginas</span>
+                        </a>
+                        <?php else: ?>
+                        <a href="memberships.php" class="flex items-center text-gray-700 hover:text-blue-600 transition-colors duration-200">
+                            <i class="fas fa-flag w-5"></i>
+                            <span>Páginas</span>
+                            <span class="ml-auto text-xs text-blue-600">
+                                <i class="fas fa-crown"></i> VIP
+                            </span>
+                        </a>
+                        <?php endif; ?>
+
+                        <?php if ($user_permissions['can_access_messages']): ?>
+                        <a href="messages.php" class="flex items-center text-gray-700 hover:text-blue-600 transition-colors duration-200">
+                            <i class="fas fa-envelope w-5"></i>
+                            <span>Mensajes</span>
+                            <?php if ($unread_messages > 0): ?>
+                                <span class="ml-auto bg-red-500 text-white text-xs px-2 py-1 rounded-full">
+                                    <?php echo $unread_messages; ?>
+                                </span>
+                            <?php endif; ?>
+                        </a>
+                        <?php else: ?>
+                        <a href="memberships.php" class="flex items-center text-gray-700 hover:text-blue-600 transition-colors duration-200">
+                            <i class="fas fa-envelope w-5"></i>
+                            <span>Mensajes</span>
+                            <span class="ml-auto text-xs text-blue-600">
+                                <i class="fas fa-crown"></i> Premium
+                            </span>
+                        </a>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Columna Central - Feed Principal -->
+            <div class="lg:flex-1">
+                <!-- Notificaciones -->
+                <?php if (isset($_SESSION['success']) || isset($_SESSION['warning']) || isset($_SESSION['error'])): ?>
+                    <div class="space-y-2 mb-4">
+                        <?php if (isset($_SESSION['success'])): ?>
+                            <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded-r-lg">
+                                <div class="flex">
+                                    <div class="flex-shrink-0">
+                                        <i class="fas fa-check-circle text-green-500"></i>
+                                    </div>
+                                    <div class="ml-3">
+                                        <p class="text-sm text-green-700"><?php echo $_SESSION['success']; unset($_SESSION['success']); ?></p>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (isset($_SESSION['warning'])): ?>
+                            <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded-r-lg">
+                                <div class="flex">
+                                    <div class="flex-shrink-0">
+                                        <i class="fas fa-exclamation-triangle text-yellow-500"></i>
+                                    </div>
+                                    <div class="ml-3">
+                                        <p class="text-sm text-yellow-700"><?php echo $_SESSION['warning']; unset($_SESSION['warning']); ?></p>
+                                    </div>
+                                </div>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (isset($_SESSION['error'])): ?>
+                            <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg">
+                                <div class="flex">
+                                    <div class="flex-shrink-0">
+                                        <i class="fas fa-times-circle text-red-500"></i>
+                                    </div>
+                                    <div class="ml-3">
+                                        <p class="text-sm text-red-700"><?php echo $_SESSION['error']; unset($_SESSION['error']); ?></p>
+                                    </div>
                                 </div>
                             </div>
                         <?php endif; ?>
                     </div>
+                <?php endif; ?>
 
-                    <!-- Acciones del Post -->
-                    <div class="flex items-center justify-between pt-4 border-t border-gray-200">
-                        <div class="flex space-x-6">
-                            <button onclick="toggleLike(<?php echo $post['id']; ?>)" 
-                                    class="flex items-center space-x-2 text-gray-500 hover:text-red-500 transition duration-300"
-                                    id="like-btn-<?php echo $post['id']; ?>">
-                                <i class="<?php echo hasUserLikedPost($_SESSION['user_id'], $post['id']) ? 'fas text-red-500' : 'far'; ?> fa-heart"></i>
-                                <span id="like-count-<?php echo $post['id']; ?>"><?php echo getPostLikesCount($post['id']); ?></span>
-                            </button>
-                            
-                            <button onclick="toggleComments(<?php echo $post['id']; ?>)" 
-                                    class="flex items-center space-x-2 text-gray-500 hover:text-blue-500 transition duration-300">
-                                <i class="far fa-comment"></i>
-                                <span><?php echo getPostCommentsCount($post['id']); ?></span>
-                            </button>
+                <!-- Crear Post -->
+                <div class="bg-white rounded-xl shadow-sm p-4 mb-4">
+                    <form action="create_post.php" method="POST" enctype="multipart/form-data" class="space-y-4">
+                        <div class="flex items-start space-x-3">
+                            <?php if ($current_user['avatar_url']): ?>
+                                <img src="<?php echo htmlspecialchars($current_user['avatar_url']); ?>" 
+                                     alt="Tu avatar" 
+                                     class="w-10 h-10 rounded-full object-cover">
+                            <?php else: ?>
+                                <div class="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                                    <?php echo strtoupper(substr($current_user['first_name'], 0, 1)); ?>
+                                </div>
+                            <?php endif; ?>
+                            <textarea name="content" 
+                                      placeholder="¿Qué estás pensando?" 
+                                      class="flex-1 resize-none border-0 bg-transparent focus:ring-0 text-gray-700 placeholder-gray-400 text-sm"
+                                      rows="2"></textarea>
                         </div>
-                    </div>
 
-                    <!-- Sección de Comentarios (inicialmente oculta) -->
-                    <div id="comments-<?php echo $post['id']; ?>" class="hidden mt-4 border-t border-gray-200 pt-4">
-                        <!-- Formulario para nuevo comentario -->
-                        <form onsubmit="addComment(event, <?php echo $post['id']; ?>)" class="mb-4">
-                            <div class="flex space-x-2">
-                                <textarea placeholder="Escribe un comentario..." 
-                                          class="flex-1 p-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none" 
-                                          rows="2" required></textarea>
-                                <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg transition duration-300">
-                                    <i class="fas fa-paper-plane"></i>
-                                </button>
+                        <!-- Área de archivos multimedia -->
+                        <div class="border border-gray-200 rounded-lg p-3">
+                            <div class="text-center">
+                                <i class="fas fa-cloud-upload-alt text-gray-400 text-xl mb-2"></i>
+                                <p class="text-sm text-gray-600">Arrastra archivos aquí o haz clic para seleccionar</p>
+                                <p class="text-xs text-gray-500 mt-1">Imágenes y videos hasta 10MB</p>
                             </div>
-                        </form>
-                        
-                        <!-- Lista de comentarios -->
-                        <div id="comments-list-<?php echo $post['id']; ?>">
-                            <!-- Los comentarios se cargarán dinámicamente -->
+                            <input type="file" name="media[]" multiple accept="image/*,video/*" 
+                                   id="media-input" class="hidden" onchange="previewFiles(this)">
                         </div>
-                    </div>
-                </div>
-            <?php endforeach; ?>
-        </div>
 
-        <?php if (empty($posts)): ?>
-            <div class="bg-white rounded-lg shadow-md p-8 text-center">
-                <i class="fas fa-comments text-gray-400 text-4xl mb-4"></i>
-                <h3 class="text-xl font-semibold text-gray-600 mb-2">No hay posts aún</h3>
-                <p class="text-gray-500">¡Sé el primero en compartir algo!</p>
+                        <!-- Vista previa de archivos -->
+                        <div id="media-preview" class="grid grid-cols-2 sm:grid-cols-3 gap-2 hidden"></div>
+
+                        <!-- Botones de acción -->
+                        <div class="flex items-center justify-between pt-3 border-t border-gray-100">
+                            <button type="button" onclick="clearFiles()" id="clear-btn" 
+                                    class="text-red-500 hover:text-red-600 text-sm hidden">
+                                <i class="fas fa-times mr-1"></i>Limpiar
+                            </button>
+                            <button type="submit" 
+                                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200">
+                                <i class="fas fa-paper-plane mr-2"></i>Publicar
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- Posts Timeline -->
+                <div class="space-y-4">
+                    <?php foreach ($posts as $post): ?>
+                        <div class="bg-white rounded-xl shadow-sm" data-post-id="<?php echo $post['id']; ?>">
+                            <!-- Header del Post -->
+                            <div class="p-4">
+                                <div class="flex items-center">
+                                    <div class="flex-shrink-0">
+                                        <?php if ($post['avatar_url']): ?>
+                                            <img src="<?php echo htmlspecialchars($post['avatar_url']); ?>" 
+                                                 alt="Avatar de <?php echo htmlspecialchars($post['first_name']); ?>"
+                                                 class="w-10 h-10 rounded-full object-cover">
+                                        <?php else: ?>
+                                            <div class="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm">
+                                                <?php echo strtoupper(substr($post['first_name'], 0, 1) . substr($post['last_name'], 0, 1)); ?>
+                                            </div>
+                                        <?php endif; ?>
+                                    </div>
+                                    <div class="ml-3 flex-1">
+                                        <h4 class="font-semibold text-gray-900"><?php echo $post['first_name'] . ' ' . $post['last_name']; ?></h4>
+                                        <p class="text-sm text-gray-500">@<?php echo $post['username']; ?> • <?php echo timeAgo($post['created_at']); ?></p>
+                                    </div>
+                                    <div class="flex space-x-2">
+                                        <?php if ($post['user_id'] == $_SESSION['user_id']): ?>
+                                            <button onclick="deletePost(<?php echo $post['id']; ?>)" 
+                                                    class="text-gray-400 hover:text-red-500 transition-colors duration-200" 
+                                                    title="Eliminar publicación">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        <?php elseif (isFollowing($_SESSION['user_id'], $post['user_id'])): ?>
+                                            <a href="messages.php?user=<?php echo $post['user_id']; ?>" 
+                                               class="text-gray-400 hover:text-blue-500 transition-colors duration-200" 
+                                               title="Enviar mensaje">
+                                                <i class="fas fa-envelope"></i>
+                                            </a>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+
+                                <!-- Contenido del Post -->
+                                <?php if (!empty($post['content'])): ?>
+                                    <p class="text-gray-800 mt-3"><?php echo nl2br(htmlspecialchars($post['content'])); ?></p>
+                                <?php endif; ?>
+                            </div>
+
+                            <!-- Medios del Post -->
+                            <?php if (!empty($post['media'])): ?>
+                                <div class="media-grid border-t border-gray-100">
+                                    <?php 
+                                    $media_count = count($post['media']);
+                                    $grid_class = '';
+                                    if ($media_count == 1) {
+                                        $grid_class = 'grid-cols-1';
+                                    } elseif ($media_count == 2) {
+                                        $grid_class = 'grid-cols-2';
+                                    } elseif ($media_count >= 3) {
+                                        $grid_class = 'grid-cols-2';
+                                    }
+                                    ?>
+                                    <div class="grid <?php echo $grid_class; ?> gap-px">
+                                        <?php 
+                                        $display_count = min($media_count, 4);
+                                        for ($i = 0; $i < $display_count; $i++): 
+                                            $media = $post['media'][$i];
+                                            $remaining = $media_count - 4;
+                                        ?>
+                                            <div class="relative <?php echo ($media_count == 3 && $i == 0) ? 'row-span-2' : ''; ?> group cursor-pointer" 
+                                                 onclick="openMediaModal(<?php echo $post['id']; ?>, <?php echo $i; ?>)">
+                                                
+                                                <?php if ($media['file_type'] == 'image'): ?>
+                                                    <img src="<?php echo htmlspecialchars($media['file_path']); ?>" 
+                                                         alt="Imagen de la publicación" 
+                                                         class="w-full h-full object-cover <?php echo ($media_count == 1) ? 'max-h-96' : 'h-48'; ?>">
+                                                <?php elseif ($media['file_type'] == 'video'): ?>
+                                                    <div class="relative">
+                                                        <video class="w-full h-full object-cover <?php echo ($media_count == 1) ? 'max-h-96' : 'h-48'; ?>" 
+                                                               preload="metadata">
+                                                            <source src="<?php echo htmlspecialchars($media['file_path']); ?>" 
+                                                                    type="<?php echo htmlspecialchars($media['mime_type']); ?>">
+                                                        </video>
+                                                        <div class="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30">
+                                                            <i class="fas fa-play text-white text-2xl"></i>
+                                                        </div>
+                                                    </div>
+                                                <?php endif; ?>
+                                                
+                                                <?php if ($i == 3 && $remaining > 0): ?>
+                                                    <div class="absolute inset-0 bg-black bg-opacity-60 flex items-center justify-center">
+                                                        <span class="text-white text-xl font-bold">+<?php echo $remaining; ?></span>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+                                        <?php endfor; ?>
+                                    </div>
+                                </div>
+                            <?php endif; ?>
+
+                            <!-- Acciones del Post -->
+                            <div class="px-4 py-3 border-t border-gray-100 flex items-center justify-between">
+                                <div class="flex space-x-6">
+                                    <button onclick="toggleLike(<?php echo $post['id']; ?>)" 
+                                            class="flex items-center space-x-2 text-gray-500 hover:text-red-500 transition-colors duration-200"
+                                            id="like-btn-<?php echo $post['id']; ?>">
+                                        <i class="<?php echo hasUserLikedPost($_SESSION['user_id'], $post['id']) ? 'fas text-red-500' : 'far'; ?> fa-heart"></i>
+                                        <span id="like-count-<?php echo $post['id']; ?>" class="text-sm">
+                                            <?php echo getPostLikesCount($post['id']); ?>
+                                        </span>
+                                    </button>
+                                    
+                                    <button onclick="toggleComments(<?php echo $post['id']; ?>)" 
+                                            class="flex items-center space-x-2 text-gray-500 hover:text-blue-500 transition-colors duration-200">
+                                        <i class="far fa-comment"></i>
+                                        <span class="text-sm"><?php echo getPostCommentsCount($post['id']); ?></span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <!-- Sección de Comentarios -->
+                            <div id="comments-<?php echo $post['id']; ?>" class="hidden border-t border-gray-100">
+                                <div class="p-4">
+                                    <form onsubmit="addComment(event, <?php echo $post['id']; ?>)" class="flex items-start space-x-2">
+                                        <?php if ($current_user['avatar_url']): ?>
+                                            <img src="<?php echo htmlspecialchars($current_user['avatar_url']); ?>" 
+                                                 alt="Tu avatar" 
+                                                 class="w-8 h-8 rounded-full object-cover">
+                                        <?php else: ?>
+                                            <div class="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-sm">
+                                                <?php echo strtoupper(substr($current_user['first_name'], 0, 1)); ?>
+                                            </div>
+                                        <?php endif; ?>
+                                        <div class="flex-1 min-w-0">
+                                            <textarea placeholder="Escribe un comentario..." 
+                                                      class="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none text-sm"
+                                                      rows="1" required></textarea>
+                                        </div>
+                                        <button type="submit" 
+                                                class="bg-blue-600 hover:bg-blue-700 text-white p-2 rounded-lg transition-colors duration-200">
+                                            <i class="fas fa-paper-plane"></i>
+                                        </button>
+                                    </form>
+                                    
+                                    <div id="comments-list-<?php echo $post['id']; ?>" class="mt-4 space-y-3">
+                                        <!-- Los comentarios se cargarán dinámicamente -->
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+
+                    <?php if (empty($posts)): ?>
+                        <div class="bg-white rounded-xl shadow-sm p-8 text-center">
+                            <i class="fas fa-comments text-gray-300 text-4xl mb-4"></i>
+                            <h3 class="text-xl font-semibold text-gray-700 mb-2">No hay publicaciones aún</h3>
+                            <p class="text-gray-500">¡Sé el primero en compartir algo!</p>
+                        </div>
+                    <?php endif; ?>
+                </div>
             </div>
-        <?php endif; ?>
+
+            <!-- Columna Derecha - Sugerencias y Tendencias -->
+            <div class="lg:w-1/4 space-y-4">
+                <!-- Sugerencias de Usuarios -->
+                <div class="bg-white rounded-xl shadow-sm p-4">
+                    <h3 class="font-semibold text-gray-800 mb-4">Sugerencias para ti</h3>
+                    <!-- Aquí puedes añadir una lista de usuarios sugeridos -->
+                    <p class="text-sm text-gray-500 text-center">
+                        <i class="fas fa-users text-gray-400"></i>
+                        Próximamente...
+                    </p>
+                </div>
+
+                <!-- Tendencias -->
+                <div class="bg-white rounded-xl shadow-sm p-4">
+                    <h3 class="font-semibold text-gray-800 mb-4">
+                        <i class="fas fa-fire text-orange-500 mr-2"></i>Tendencias
+                    </h3>
+                    <?php if (!empty($trending_posts)): ?>
+                        <div class="space-y-4">
+                            <?php foreach ($trending_posts as $post): ?>
+                                <div class="group">
+                                    <a href="#post-<?php echo $post['id']; ?>" class="block hover:bg-gray-50 rounded-lg p-2 transition-colors duration-200">
+                                        <div class="flex items-center space-x-3">
+                                            <!-- Avatar del autor -->
+                                            <div class="flex-shrink-0">
+                                                <?php if ($post['avatar_url']): ?>
+                                                    <img src="<?php echo htmlspecialchars($post['avatar_url']); ?>" 
+                                                         alt="Avatar de <?php echo htmlspecialchars($post['first_name']); ?>"
+                                                         class="w-8 h-8 rounded-full object-cover">
+                                                <?php else: ?>
+                                                    <div class="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold text-xs">
+                                                        <?php echo strtoupper(substr($post['first_name'], 0, 1) . substr($post['last_name'], 0, 1)); ?>
+                                                    </div>
+                                                <?php endif; ?>
+                                            </div>
+                                            
+                                            <!-- Contenido -->
+                                            <div class="flex-1 min-w-0">
+                                                <p class="text-sm font-medium text-gray-900 truncate">
+                                                    <?php echo $post['first_name'] . ' ' . $post['last_name']; ?>
+                                                </p>
+                                                <p class="text-xs text-gray-500 truncate">
+                                                    <?php 
+                                                    $content = strip_tags($post['content']);
+                                                    echo strlen($content) > 50 ? substr($content, 0, 50) . '...' : $content;
+                                                    ?>
+                                                </p>
+                                            </div>
+
+                                            <!-- Contador de likes -->
+                                            <div class="flex items-center text-sm text-gray-500">
+                                                <i class="fas fa-heart text-red-500 mr-1"></i>
+                                                <span><?php echo $post['likes_count']; ?></span>
+                                            </div>
+                                        </div>
+                                    </a>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php else: ?>
+                        <p class="text-sm text-gray-500 text-center">
+                            <i class="fas fa-chart-line text-gray-400"></i>
+                            No hay publicaciones destacadas aún
+                        </p>
+                    <?php endif; ?>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Modal para visualizar medios -->

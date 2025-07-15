@@ -48,56 +48,111 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
-<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen">
-    <div class="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-        <div class="max-w-md w-full space-y-8">
-            <div>
-                <div class="mx-auto h-12 w-12 flex items-center justify-center rounded-full bg-indigo-600">
-                    <i class="fas fa-users text-white text-xl"></i>
+<body class="bg-gradient-to-br from-blue-50 via-sky-50 to-cyan-50 min-h-screen">
+    <div class="min-h-screen flex flex-col items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div class="max-w-md w-full bg-white rounded-2xl shadow-xl overflow-hidden">
+            <!-- Header con gradiente -->
+            <div class="bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 px-6 py-8 text-center">
+                <div class="mx-auto h-16 w-16 flex items-center justify-center rounded-full bg-white bg-opacity-25 backdrop-blur-sm mb-4 transform hover:scale-110 transition-transform duration-300">
+                    <i class="fas fa-users text-white text-2xl"></i>
                 </div>
-                <h2 class="mt-6 text-center text-3xl font-extrabold text-gray-900">
-                    Inicia sesión en tu cuenta
+                <h2 class="text-2xl font-bold text-white mb-2">
+                    ¡Bienvenido de nuevo!
                 </h2>
-                <p class="mt-2 text-center text-sm text-gray-600">
-                    ¿No tienes cuenta?
-                    <a href="register.php" class="font-medium text-indigo-600 hover:text-indigo-500">
-                        Regístrate aquí
-                    </a>
+                <p class="text-blue-100 text-sm">
+                    Inicia sesión para conectar con tu comunidad
                 </p>
             </div>
-            
-            <form class="mt-8 space-y-6" method="POST">
-                <div class="rounded-md shadow-sm -space-y-px">
-                    <div>
-                        <label for="username" class="sr-only">Usuario o Email</label>
-                        <input id="username" name="username" type="text" required 
-                               class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" 
-                               placeholder="Usuario o Email">
-                    </div>
-                    <div>
-                        <label for="password" class="sr-only">Contraseña</label>
-                        <input id="password" name="password" type="password" required 
-                               class="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm" 
-                               placeholder="Contraseña">
-                    </div>
-                </div>
 
-                <?php if ($error): ?>
-                    <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-                        <span class="block sm:inline"><?php echo $error; ?></span>
+            <!-- Formulario -->
+            <div class="px-6 py-8">
+                <form method="POST" class="space-y-6">
+                    <!-- Campo de Usuario -->
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">
+                            Usuario o Email
+                        </label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <i class="fas fa-user text-blue-400"></i>
+                            </div>
+                            <input id="username" name="username" type="text" required 
+                                   class="appearance-none block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out sm:text-sm" 
+                                   placeholder="Ingresa tu usuario o email">
+                        </div>
                     </div>
-                <?php endif; ?>
 
-                <div>
-                    <button type="submit" class="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition duration-150 ease-in-out">
-                        <span class="absolute left-0 inset-y-0 flex items-center pl-3">
-                            <i class="fas fa-sign-in-alt text-indigo-500 group-hover:text-indigo-400"></i>
-                        </span>
+                    <!-- Campo de Contraseña -->
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">
+                            Contraseña
+                        </label>
+                        <div class="relative">
+                            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <i class="fas fa-lock text-blue-400"></i>
+                            </div>
+                            <input id="password" name="password" type="password" required 
+                                   class="appearance-none block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-150 ease-in-out sm:text-sm" 
+                                   placeholder="Ingresa tu contraseña">
+                        </div>
+                    </div>
+
+                    <?php if ($error): ?>
+                        <div class="bg-blue-50 border-l-4 border-blue-400 p-4 rounded-lg" role="alert">
+                            <div class="flex">
+                                <div class="flex-shrink-0">
+                                    <i class="fas fa-exclamation-circle text-blue-400"></i>
+                                </div>
+                                <div class="ml-3">
+                                    <p class="text-sm text-blue-700"><?php echo $error; ?></p>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endif; ?>
+
+                    <!-- Botón de Inicio de Sesión -->
+                    <button type="submit" 
+                            class="w-full flex justify-center items-center px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 hover:from-blue-700 hover:via-blue-600 hover:to-cyan-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transform hover:scale-[1.02] transition-all duration-150 shadow-lg">
+                        <i class="fas fa-sign-in-alt mr-2"></i>
                         Iniciar Sesión
                     </button>
-                </div>
-            </form>
+
+                    <!-- Enlace de Registro -->
+                    <div class="text-center mt-6">
+                        <p class="text-sm text-gray-600">
+                            ¿No tienes una cuenta?
+                            <a href="register.php" class="font-medium text-blue-600 hover:text-blue-500 hover:underline transition duration-150 ease-in-out ml-1">
+                                Regístrate aquí
+                            </a>
+                        </p>
+                    </div>
+                </form>
+            </div>
         </div>
     </div>
+
+    <script>
+    // Animación suave al cargar la página
+    document.addEventListener('DOMContentLoaded', function() {
+        document.querySelector('.max-w-md').classList.add('animate-fade-in-up');
+    });
+    </script>
+
+    <style>
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .animate-fade-in-up {
+        animation: fadeInUp 0.6s ease-out;
+    }
+    </style>
 </body>
 </html> 

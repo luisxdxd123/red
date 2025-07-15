@@ -4,7 +4,7 @@ requireLogin();
 
 // Verificar que el usuario tenga acceso a mensajes
 $user_permissions = getUserPermissions($_SESSION['user_id']);
-if (!$user_permissions['can_access_messages']) {
+if (!$user_permissions['can_access_messages'] && !$user_permissions['is_admin']) {
     $_SESSION['warning'] = 'Necesitas una membresía Premium o VIP para acceder a los mensajes.';
     header('Location: memberships.php');
     exit();

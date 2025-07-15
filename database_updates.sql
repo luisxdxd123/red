@@ -163,6 +163,9 @@ ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE;
 -- Agregar campo can_create_pages a la tabla users
 ALTER TABLE users ADD COLUMN can_create_pages BOOLEAN DEFAULT FALSE;
 
+-- Añadir campo avatar_url a la tabla users
+ALTER TABLE users ADD COLUMN avatar_url VARCHAR(255) DEFAULT NULL;
+
 -- Actualizar el usuario admin existente
 UPDATE users SET is_admin = TRUE WHERE username = 'admin';
 

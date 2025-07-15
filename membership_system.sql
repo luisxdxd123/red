@@ -16,7 +16,7 @@ CREATE TABLE membership_types (
     currency VARCHAR(3) DEFAULT 'MXN',
     description TEXT,
     features JSON,
-    duration_months INT DEFAULT 1,
+    duration_months INT DEFAULT 12,  -- Cambiado a 12 meses por defecto
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -36,6 +36,20 @@ CREATE TABLE membership_payments (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+-- Tabla para solicitudes de membresía
+CREATE TABLE membership_requests (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    membership_type VARCHAR(50) NOT NULL,
+    payment_proof VARCHAR(255) NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    response_date TIMESTAMP NULL,
+    admin_notes TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
 -- Insertar los tipos de membresías
 INSERT INTO membership_types (name, price, description, features, duration_months) VALUES
 ('basico', 0.00, 'Membresía básica gratuita', 
@@ -43,10 +57,13 @@ INSERT INTO membership_types (name, price, description, features, duration_month
 12),
 ('premium', 2000.00, 'Membresía Premium - Acceso a grupos y mensajes', 
 '["Todas las funciones básicas", "Acceso a grupos", "Sistema de mensajería", "Crear y unirse a grupos", "Chat privado con usuarios"]', 
-1),
+12),  -- Cambiado a 12 meses
 ('vip', 5000.00, 'Membresía VIP - Acceso completo a todas las funciones', 
 '["Todas las funciones Premium", "Acceso a páginas", "Crear y administrar páginas", "Funciones administrativas", "Soporte prioritario"]', 
-1);
+12);  -- Cambiado a 12 meses
 
 -- Actualizar usuarios existentes con membresía básica
-UPDATE users SET membership_type = 'basico', membership_created_at = NOW() WHERE membership_type IS NULL; 
+UPDATE users SET membership_type = 'basico', membership_created_at = NOW() WHERE membership_type IS NULL;
+
+-- ALTER para actualizar la duración de membresías existentes
+UPDATE membership_types SET duration_months = 12 WHERE name IN ('premium', 'vip'); 

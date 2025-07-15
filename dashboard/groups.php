@@ -4,7 +4,7 @@ requireLogin();
 
 // Verificar que el usuario tenga acceso a grupos
 $user_permissions = getUserPermissions($_SESSION['user_id']);
-if (!$user_permissions['can_access_groups']) {
+if (!$user_permissions['can_access_groups'] && !$user_permissions['is_admin']) {
     $_SESSION['warning'] = 'Necesitas una membresía Premium o VIP para acceder a los grupos.';
     header('Location: memberships.php');
     exit();

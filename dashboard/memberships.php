@@ -10,17 +10,53 @@ $user_permissions = getUserPermissions($_SESSION['user_id']);
 $current_membership = getUserMembership($_SESSION['user_id']);
 $membership_types = getMembershipTypes();
 
-// Procesar compra de membresía
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['purchase_membership'])) {
-    $membership_type = $_POST['membership_type'];
-    $result = processMembershipPurchase($_SESSION['user_id'], $membership_type);
-    
-    if ($result['success']) {
-        $_SESSION['success'] = $result['message'];
-        header('Location: memberships.php');
-        exit();
-    } else {
-        $_SESSION['error'] = $result['message'];
+// Verificar si hay una solicitud pendiente
+$query = "SELECT * FROM membership_requests WHERE user_id = ? AND status = 'pending'";
+$stmt = $db->prepare($query);
+$stmt->execute([$_SESSION['user_id']]);
+$pending_request = $stmt->fetch(PDO::FETCH_ASSOC);
+
+// Procesar solicitud de membresía
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_FILES['payment_proof'], $_POST['membership_type'])) {
+        $membership_type = $_POST['membership_type'];
+        
+        // Obtener precio de la membresía
+        $query = "SELECT price FROM membership_types WHERE name = ?";
+        $stmt = $db->prepare($query);
+        $stmt->execute([$membership_type]);
+        $price = $stmt->fetchColumn();
+
+        // Procesar el archivo
+        if ($_FILES['payment_proof']['error'] === UPLOAD_ERR_OK) {
+            $file_info = pathinfo($_FILES['payment_proof']['name']);
+            $extension = strtolower($file_info['extension']);
+            
+            // Validar extensión
+            $allowed_extensions = ['jpg', 'jpeg', 'png', 'pdf'];
+            if (in_array($extension, $allowed_extensions)) {
+                $new_filename = uniqid() . '_' . time() . '.' . $extension;
+                $upload_path = 'uploads/membership_requests/';
+                
+                // Crear directorio si no existe
+                if (!file_exists($upload_path)) {
+                    mkdir($upload_path, 0777, true);
+                }
+                
+                // Mover archivo
+                if (move_uploaded_file($_FILES['payment_proof']['tmp_name'], $upload_path . $new_filename)) {
+                    // Guardar solicitud en la base de datos
+                    $query = "INSERT INTO membership_requests (user_id, membership_type, payment_proof, amount) VALUES (?, ?, ?, ?)";
+                    $stmt = $db->prepare($query);
+                    if ($stmt->execute([$_SESSION['user_id'], $membership_type, $new_filename, $price])) {
+                        $_SESSION['success'] = 'Solicitud enviada exitosamente. Un administrador revisará tu pago.';
+                        header('Location: memberships.php');
+                        exit;
+                    }
+                }
+            }
+        }
+        $_SESSION['error'] = 'Error al procesar la solicitud. Por favor, intenta de nuevo.';
     }
 }
 
@@ -38,59 +74,7 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
 </head>
 <body class="bg-gray-100 min-h-screen">
-    <!-- Navbar -->
-    <nav class="bg-white shadow-lg sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4">
-            <div class="flex justify-between">
-                <div class="flex space-x-7">
-                    <div class="flex items-center py-4">
-                        <i class="fas fa-users text-indigo-600 text-2xl mr-2"></i>
-                        <span class="font-semibold text-gray-500 text-lg">Red Social</span>
-                    </div>
-                    <div class="hidden md:flex items-center space-x-1">
-                        <a href="index.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
-                            <i class="fas fa-home mr-1"></i>Inicio
-                        </a>
-                        <?php if ($user_permissions['can_access_groups']): ?>
-                        <a href="groups.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
-                            <i class="fas fa-users mr-1"></i>Grupos
-                        </a>
-                        <?php endif; ?>
-                        <?php if ($user_permissions['can_access_pages']): ?>
-                        <a href="pages.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
-                            <i class="fas fa-flag mr-1"></i>Páginas
-                        </a>
-                        <?php endif; ?>
-                        <?php if ($user_permissions['can_access_messages']): ?>
-                        <a href="messages.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300 relative">
-                            <i class="fas fa-envelope mr-1"></i>Mensajes
-                            <?php if ($unread_messages > 0): ?>
-                                <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                                    <?php echo $unread_messages > 9 ? '9+' : $unread_messages; ?>
-                                </span>
-                            <?php endif; ?>
-                        </a>
-                        <?php endif; ?>
-                        <a href="memberships.php" class="py-4 px-2 text-indigo-500 border-b-4 border-indigo-500 font-semibold">
-                            <i class="fas fa-crown mr-1"></i>Membresías
-                        </a>
-                        <a href="profile.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
-                            <i class="fas fa-user mr-1"></i>Mi Perfil
-                        </a>
-                        <a href="users.php" class="py-4 px-2 text-gray-500 font-semibold hover:text-indigo-500 transition duration-300">
-                            <i class="fas fa-user-friends mr-1"></i>Usuarios
-                        </a>
-                    </div>
-                </div>
-                <div class="flex items-center space-x-3">
-                    <span class="text-gray-700">Hola, <?php echo $_SESSION['first_name']; ?>!</span>
-                    <a href="../auth/logout.php" class="py-2 px-2 font-medium text-gray-500 rounded hover:bg-red-500 hover:text-white transition duration-300">
-                        <i class="fas fa-sign-out-alt"></i> Salir
-                    </a>
-                </div>
-            </div>
-        </div>
-    </nav>
+    <?php include '../includes/navbar.php'; ?>
 
     <!-- Notificaciones -->
     <?php if (isset($_SESSION['success'])): ?>
@@ -178,7 +162,7 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
                             <span class="text-lg text-gray-500 font-normal">MXN</span>
                         </div>
                         <?php if ($membership['name'] !== 'basico'): ?>
-                        <p class="text-gray-600">por <?php echo $membership['duration_months']; ?> mes(es)</p>
+                        <p class="text-gray-600">por año</p>
                         <?php endif; ?>
                     </div>
 
@@ -205,19 +189,19 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
                         <button class="w-full bg-gray-300 text-gray-600 font-bold py-3 px-4 rounded-lg cursor-not-allowed">
                             Membresía Gratuita
                         </button>
+                    <?php elseif ($pending_request && $pending_request['membership_type'] === $membership['name']): ?>
+                        <button class="w-full bg-yellow-500 text-white font-bold py-3 px-4 rounded-lg cursor-not-allowed">
+                            <i class="fas fa-clock mr-2"></i>Solicitud en Revisión
+                        </button>
                     <?php else: ?>
-                        <form method="POST" class="w-full">
-                            <input type="hidden" name="membership_type" value="<?php echo $membership['name']; ?>">
-                            <button type="submit" name="purchase_membership" 
-                                    class="w-full <?php echo $membership['name'] === 'vip' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-indigo-600 hover:bg-indigo-700'; ?> text-white font-bold py-3 px-4 rounded-lg transition duration-300"
-                                    onclick="return confirm('¿Estás seguro de que quieres comprar esta membresía por $<?php echo number_format($membership['price'], 0); ?> MXN?')">
-                                <?php if ($membership['name'] === 'premium'): ?>
-                                    <i class="fas fa-shopping-cart mr-2"></i>Obtener Premium
-                                <?php else: ?>
-                                    <i class="fas fa-crown mr-2"></i>Obtener VIP
-                                <?php endif; ?>
-                            </button>
-                        </form>
+                        <button onclick="openRequestModal('<?php echo $membership['name']; ?>', <?php echo $membership['price']; ?>)" 
+                                class="w-full <?php echo $membership['name'] === 'vip' ? 'bg-purple-600 hover:bg-purple-700' : 'bg-indigo-600 hover:bg-indigo-700'; ?> text-white font-bold py-3 px-4 rounded-lg transition duration-300">
+                            <?php if ($membership['name'] === 'premium'): ?>
+                                <i class="fas fa-upload mr-2"></i>Enviar Comprobante Premium
+                            <?php else: ?>
+                                <i class="fas fa-upload mr-2"></i>Enviar Comprobante VIP
+                            <?php endif; ?>
+                        </button>
                     <?php endif; ?>
                 </div>
             </div>
@@ -238,8 +222,8 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
                     </h3>
                     <ul class="text-gray-600 space-y-1">
                         <li>• Membresía Básica: Permanente y gratuita</li>
-                        <li>• Membresía Premium: 1 mes por $2,000 MXN</li>
-                        <li>• Membresía VIP: 1 mes por $5,000 MXN</li>
+                        <li>• Membresía Premium: 1 año por $2,000 MXN</li>
+                        <li>• Membresía VIP: 1 año por $5,000 MXN</li>
                     </ul>
                 </div>
                 <div>
@@ -257,7 +241,63 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
         </div>
     </div>
 
+    <!-- Modal para Solicitud de Membresía -->
+    <div id="requestModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full hidden">
+        <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3">
+                <h3 class="text-lg font-bold text-gray-900 mb-4">Solicitar Membresía <span id="membershipType" class="capitalize"></span></h3>
+                <form method="POST" enctype="multipart/form-data" class="space-y-4">
+                    <input type="hidden" name="membership_type" id="membershipTypeInput">
+                    
+                    <div class="bg-gray-50 p-4 rounded-lg mb-4">
+                        <p class="text-gray-700 font-medium">Monto a pagar:</p>
+                        <p class="text-2xl font-bold text-indigo-600">$<span id="membershipPrice"></span> MXN</p>
+                        <p class="text-sm text-gray-500">por año</p>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">
+                            Comprobante de Pago
+                        </label>
+                        <input type="file" name="payment_proof" required accept=".jpg,.jpeg,.png,.pdf"
+                               class="mt-1 block w-full text-sm text-gray-500
+                                      file:mr-4 file:py-2 file:px-4
+                                      file:rounded-full file:border-0
+                                      file:text-sm file:font-semibold
+                                      file:bg-indigo-50 file:text-indigo-700
+                                      hover:file:bg-indigo-100">
+                        <p class="mt-1 text-sm text-gray-500">
+                            Formatos aceptados: JPG, JPEG, PNG, PDF. Tamaño máximo: 5MB
+                        </p>
+                    </div>
+
+                    <div class="flex justify-end space-x-3">
+                        <button type="button" onclick="closeRequestModal()" 
+                                class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded transition duration-300">
+                            Cancelar
+                        </button>
+                        <button type="submit" 
+                                class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded transition duration-300">
+                            Enviar Solicitud
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <script>
+        function openRequestModal(membershipType, price) {
+            document.getElementById('membershipType').textContent = membershipType;
+            document.getElementById('membershipTypeInput').value = membershipType;
+            document.getElementById('membershipPrice').textContent = price.toLocaleString();
+            document.getElementById('requestModal').classList.remove('hidden');
+        }
+        
+        function closeRequestModal() {
+            document.getElementById('requestModal').classList.add('hidden');
+        }
+
         // Auto-hide notifications after 5 seconds
         setTimeout(function() {
             const alerts = document.querySelectorAll('.bg-green-100, .bg-red-100');
