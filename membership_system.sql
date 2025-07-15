@@ -43,7 +43,7 @@ CREATE TABLE membership_requests (
     membership_type VARCHAR(50) NOT NULL,
     payment_proof VARCHAR(255) NOT NULL,
     amount DECIMAL(10,2) NOT NULL,
-    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+    status ENUM('pending', 'approved', 'rejected', 'cancelled', 'user_cancelled') DEFAULT 'pending',
     request_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     response_date TIMESTAMP NULL,
     admin_notes TEXT,
@@ -55,10 +55,10 @@ INSERT INTO membership_types (name, price, description, features, duration_month
 ('basico', 0.00, 'Membresía básica gratuita', 
 '["Acceso al timeline principal", "Ver y editar perfil", "Ver otros usuarios", "Publicar posts básicos"]', 
 12),
-('premium', 2000.00, 'Membresía Premium - Acceso a grupos y mensajes', 
+('premium', 499.00, 'Membresía Premium - Acceso a grupos y mensajes', 
 '["Todas las funciones básicas", "Acceso a grupos", "Sistema de mensajería", "Crear y unirse a grupos", "Chat privado con usuarios"]', 
 12),  -- Cambiado a 12 meses
-('vip', 5000.00, 'Membresía VIP - Acceso completo a todas las funciones', 
+('vip', 1200.00, 'Membresía VIP - Acceso completo a todas las funciones', 
 '["Todas las funciones Premium", "Acceso a páginas", "Crear y administrar páginas", "Funciones administrativas", "Soporte prioritario"]', 
 12);  -- Cambiado a 12 meses
 
@@ -66,4 +66,11 @@ INSERT INTO membership_types (name, price, description, features, duration_month
 UPDATE users SET membership_type = 'basico', membership_created_at = NOW() WHERE membership_type IS NULL;
 
 -- ALTER para actualizar la duración de membresías existentes
-UPDATE membership_types SET duration_months = 12 WHERE name IN ('premium', 'vip'); 
+UPDATE membership_types SET duration_months = 12 WHERE name IN ('premium', 'vip');
+
+-- ALTER para actualizar los precios de las membresías existentes
+UPDATE membership_types SET price = 499.00 WHERE name = 'premium';
+UPDATE membership_types SET price = 1200.00 WHERE name = 'vip';
+
+-- Agregar el estado user_cancelled a las solicitudes existentes si no existe
+ALTER TABLE membership_requests MODIFY COLUMN status ENUM('pending', 'approved', 'rejected', 'cancelled', 'user_cancelled') DEFAULT 'pending'; 

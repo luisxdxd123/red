@@ -130,9 +130,20 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
                         <?php endif; ?>
                     </div>
                 </div>
-                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium <?php echo $membershipColors[$current_membership['membership_type']]; ?>">
-                    <?php echo ucfirst($current_membership['membership_type']); ?>
-                </span>
+                <div class="flex items-center space-x-4">
+                    <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium <?php echo $membershipColors[$current_membership['membership_type']]; ?>">
+                        <?php echo ucfirst($current_membership['membership_type']); ?>
+                    </span>
+                    <?php if ($current_membership['membership_type'] !== 'basico'): ?>
+                        <button onclick="showCancelModal()" 
+                                class="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors duration-200">
+                            <svg class="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"></path>
+                            </svg>
+                            Cancelar Membresía
+                        </button>
+                    <?php endif; ?>
+                </div>
             </div>
         </div>
 
@@ -222,8 +233,8 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
                     </h3>
                     <ul class="text-gray-600 space-y-1">
                         <li>• Membresía Básica: Permanente y gratuita</li>
-                        <li>• Membresía Premium: 1 año por $2,000 MXN</li>
-                        <li>• Membresía VIP: 1 año por $5,000 MXN</li>
+                        <li>• Membresía Premium: 1 año por $499 MXN</li>
+                        <li>• Membresía VIP: 1 año por $1,200 MXN</li>
                     </ul>
                 </div>
                 <div>
@@ -286,6 +297,32 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
         </div>
     </div>
 
+    <!-- Modal de Confirmación de Cancelación -->
+    <div id="cancelModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center">
+        <div class="bg-white rounded-lg max-w-md w-full mx-4">
+            <div class="p-6">
+                <div class="mb-4">
+                    <h3 class="text-lg font-medium text-gray-900">Cancelar Membresía</h3>
+                    <p class="text-sm text-gray-500 mt-2">
+                        ¿Estás seguro de que deseas cancelar tu membresía? Esta acción no se puede deshacer y perderás acceso a todas las funciones premium inmediatamente.
+                    </p>
+                </div>
+                <div class="mt-6 flex justify-end space-x-3">
+                    <button onclick="hideCancelModal()" 
+                            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors duration-200">
+                        Volver
+                    </button>
+                    <form action="cancel_membership.php" method="POST" class="inline">
+                        <button type="submit" 
+                                class="px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors duration-200">
+                            Confirmar Cancelación
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         function openRequestModal(membershipType, price) {
             document.getElementById('membershipType').textContent = membershipType;
@@ -296,6 +333,18 @@ $unread_messages = getUnreadMessagesCount($_SESSION['user_id']);
         
         function closeRequestModal() {
             document.getElementById('requestModal').classList.add('hidden');
+        }
+
+        function showCancelModal() {
+            const modal = document.getElementById('cancelModal');
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function hideCancelModal() {
+            const modal = document.getElementById('cancelModal');
+            modal.classList.add('hidden');
+            document.body.style.overflow = 'auto';
         }
 
         // Auto-hide notifications after 5 seconds

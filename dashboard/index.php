@@ -55,6 +55,23 @@ $trending_query = "SELECT p.*, u.username, u.first_name, u.last_name, u.avatar_u
 $stmt = $db->prepare($trending_query);
 $stmt->execute();
 $trending_posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+// Obtener las 3 páginas más populares para sugerencias
+$popular_pages_query = "SELECT p.id, p.name, p.description,
+                              COUNT(pf.id) as followers_count,
+                              CASE WHEN EXISTS (
+                                  SELECT 1 FROM page_followers 
+                                  WHERE page_id = p.id AND user_id = ?
+                              ) THEN 1 ELSE 0 END as is_following
+                       FROM pages p 
+                       LEFT JOIN page_followers pf ON p.id = pf.page_id
+                       WHERE p.is_active = 1
+                       GROUP BY p.id
+                       ORDER BY followers_count DESC, p.created_at DESC
+                       LIMIT 3";
+$stmt = $db->prepare($popular_pages_query);
+$stmt->execute([$_SESSION['user_id']]);
+$popular_pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 ?>
 
 <!DOCTYPE html>
@@ -219,27 +236,52 @@ $trending_posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
                             <?php if ($current_user['avatar_url']): ?>
                                 <img src="<?php echo htmlspecialchars($current_user['avatar_url']); ?>" 
                                      alt="Tu avatar" 
-                                     class="w-10 h-10 rounded-full object-cover">
+                                     class="w-10 h-10 rounded-full object-cover flex-shrink-0">
                             <?php else: ?>
-                                <div class="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold">
+                                <div class="w-10 h-10 rounded-full bg-gradient-to-r from-blue-500 to-purple-500 flex items-center justify-center text-white font-bold flex-shrink-0">
                                     <?php echo strtoupper(substr($current_user['first_name'], 0, 1)); ?>
                                 </div>
                             <?php endif; ?>
                             <textarea name="content" 
                                       placeholder="¿Qué estás pensando?" 
-                                      class="flex-1 resize-none border-0 bg-transparent focus:ring-0 text-gray-700 placeholder-gray-400 text-sm"
+                                      class="w-full min-h-[60px] resize-none focus:outline-none text-gray-700 placeholder-gray-400 text-sm bg-transparent"
                                       rows="2"></textarea>
                         </div>
 
                         <!-- Área de archivos multimedia -->
-                        <div class="border border-gray-200 rounded-lg p-3">
+                        <div class="border-2 border-dashed border-gray-200 rounded-lg p-4 transition-colors duration-200" 
+                             id="drop-zone"
+                             ondrop="handleDrop(event)"
+                             ondragover="handleDragOver(event)"
+                             ondragleave="handleDragLeave(event)">
                             <div class="text-center">
-                                <i class="fas fa-cloud-upload-alt text-gray-400 text-xl mb-2"></i>
-                                <p class="text-sm text-gray-600">Arrastra archivos aquí o haz clic para seleccionar</p>
-                                <p class="text-xs text-gray-500 mt-1">Imágenes y videos hasta 10MB</p>
+                                <i class="fas fa-cloud-upload-alt text-gray-400 text-2xl mb-2"></i>
+                                <p class="text-sm text-gray-600 mb-1">Arrastra archivos aquí o</p>
+                                <button type="button" 
+                                        onclick="document.getElementById('media-input').click()" 
+                                        class="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors duration-200 mb-2">
+                                    <i class="fas fa-plus mr-2"></i>
+                                    Seleccionar archivos
+                                </button>
+                                <p class="text-xs text-gray-500">
+                                    Imágenes (JPG, PNG, GIF) y Videos (MP4, WebM) hasta 1GB
+                                </p>
                             </div>
-                            <input type="file" name="media[]" multiple accept="image/*,video/*" 
-                                   id="media-input" class="hidden" onchange="previewFiles(this)">
+                            <input type="file" name="media[]" multiple 
+                                   accept="image/jpeg,image/png,image/gif,video/mp4,video/webm"
+                                   id="media-input" class="hidden" 
+                                   onchange="handleFileSelect(this)">
+                            
+                            <!-- Barra de Progreso -->
+                            <div id="upload-progress-container" class="mt-4 hidden">
+                                <div class="flex items-center justify-between mb-1">
+                                    <p class="text-sm text-gray-600" id="upload-status">Preparando archivos...</p>
+                                    <p class="text-xs text-gray-500" id="upload-details"></p>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div id="upload-progress" class="bg-blue-600 h-2 rounded-full transition-all duration-300" style="width: 0%"></div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Vista previa de archivos -->
@@ -249,7 +291,7 @@ $trending_posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
                         <div class="flex items-center justify-between pt-3 border-t border-gray-100">
                             <button type="button" onclick="clearFiles()" id="clear-btn" 
                                     class="text-red-500 hover:text-red-600 text-sm hidden">
-                                <i class="fas fa-times mr-1"></i>Limpiar
+                                <i class="fas fa-times mr-1"></i>Limpiar todo
                             </button>
                             <button type="submit" 
                                     class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200">
@@ -420,14 +462,70 @@ $trending_posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             <!-- Columna Derecha - Sugerencias y Tendencias -->
             <div class="lg:w-1/4 space-y-4">
-                <!-- Sugerencias de Usuarios -->
+                <!-- Sugerencias de Páginas -->
                 <div class="bg-white rounded-xl shadow-sm p-4">
-                    <h3 class="font-semibold text-gray-800 mb-4">Sugerencias para ti</h3>
-                    <!-- Aquí puedes añadir una lista de usuarios sugeridos -->
-                    <p class="text-sm text-gray-500 text-center">
-                        <i class="fas fa-users text-gray-400"></i>
-                        Próximamente...
-                    </p>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="font-semibold text-gray-800">
+                            <i class="fas fa-star text-yellow-400 mr-2"></i>Páginas Populares
+                        </h3>
+                        <?php if ($user_permissions['can_access_pages']): ?>
+                        <a href="pages.php" class="text-sm text-blue-600 hover:text-blue-700 font-medium">
+                            Ver todas
+                        </a>
+                        <?php endif; ?>
+                    </div>
+
+                    <?php if (!empty($popular_pages)): ?>
+                        <div class="space-y-3">
+                            <?php foreach ($popular_pages as $index => $page): 
+                                // Generar un color único para cada página basado en su índice
+                                $colors = [
+                                    'from-blue-500 to-cyan-400',
+                                    'from-purple-500 to-pink-400',
+                                    'from-orange-500 to-yellow-400'
+                                ];
+                                $colorClass = $colors[$index % count($colors)];
+                            ?>
+                                <div class="group">
+                                    <div class="flex items-center p-3 rounded-lg bg-gradient-to-r <?php echo $colorClass; ?> bg-opacity-10 hover:bg-opacity-20 transition-all duration-200">
+                                        <!-- Nombre y seguidores -->
+                                        <div class="flex-1">
+                                            <h4 class="font-medium text-gray-900">
+                                                <?php echo htmlspecialchars($page['name']); ?>
+                                            </h4>
+                                            <p class="text-xs text-gray-600">
+                                                <?php echo number_format($page['followers_count']); ?> seguidores
+                                            </p>
+                                        </div>
+
+                                        <!-- Botón de acción -->
+                                        <?php if ($user_permissions['can_access_pages']): ?>
+                                            <?php if (!$page['is_following']): ?>
+                                                <button onclick="followPage(<?php echo $page['id']; ?>)" 
+                                                        class="text-sm bg-white bg-opacity-90 hover:bg-opacity-100 text-gray-800 px-3 py-1 rounded-full transition-all duration-200 shadow-sm">
+                                                    Seguir
+                                                </button>
+                                            <?php else: ?>
+                                                <span class="text-xs bg-white bg-opacity-90 px-3 py-1 rounded-full text-green-600">
+                                                    <i class="fas fa-check"></i> Siguiendo
+                                                </span>
+                                            <?php endif; ?>
+                                        <?php else: ?>
+                                            <a href="memberships.php" 
+                                               class="text-xs bg-white bg-opacity-90 hover:bg-opacity-100 px-3 py-1 rounded-full text-blue-600 font-medium shadow-sm">
+                                                <i class="fas fa-crown"></i> VIP
+                                            </a>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                    <?php else: ?>
+                        <p class="text-sm text-gray-500 text-center py-2">
+                            <i class="fas fa-flag text-gray-400"></i>
+                            No hay páginas disponibles
+                        </p>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Tendencias -->
@@ -517,6 +615,31 @@ $trending_posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
             <!-- Información del medio -->
             <div id="media-info" class="absolute bottom-4 left-4 right-4 text-white text-center">
                 <p id="media-counter" class="text-sm opacity-75"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Aviso de Archivo Grande -->
+    <div id="largeFileModal" class="fixed inset-0 bg-gray-600 bg-opacity-50 backdrop-blur-sm z-50 hidden">
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full transform transition-all duration-300">
+                <div class="text-center mb-6">
+                    <div class="bg-yellow-100 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-exclamation-triangle text-yellow-600 text-2xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-900 mb-2" id="modalTitle">Archivo Grande</h3>
+                    <p class="text-gray-600" id="modalMessage"></p>
+                </div>
+                <div class="flex justify-end space-x-3">
+                    <button onclick="closeLargeFileModal(false)" 
+                            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200 font-medium">
+                        Cancelar
+                    </button>
+                    <button onclick="closeLargeFileModal(true)" 
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 font-medium">
+                        Continuar
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -690,143 +813,259 @@ $trending_posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
             }, 4000);
         }
 
-        // ===== FUNCIONES PARA MANEJO DE ARCHIVOS MULTIMEDIA =====
-        
-        // Función para previsualizar archivos seleccionados
-        function previewFiles(input) {
-            const files = input.files;
+        // Funciones para manejo de archivos
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('drop-zone').classList.add('border-blue-400', 'bg-blue-50');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            document.getElementById('drop-zone').classList.remove('border-blue-400', 'bg-blue-50');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const dropZone = document.getElementById('drop-zone');
+            dropZone.classList.remove('border-blue-400', 'bg-blue-50');
+            
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            
+            handleFiles(files);
+        }
+
+        function handleFileSelect(input) {
+            handleFiles(input.files);
+        }
+
+        // Variables para el manejo de modales y carga
+        let modalResolve = null;
+        let currentUpload = {
+            totalFiles: 0,
+            processedFiles: 0,
+            totalSize: 0,
+            uploadedSize: 0
+        };
+
+        // Función para mostrar el modal de archivo grande
+        function showLargeFileModal(message) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('largeFileModal');
+                document.getElementById('modalMessage').textContent = message;
+                modal.classList.remove('hidden');
+                modalResolve = resolve;
+            });
+        }
+
+        // Función para cerrar el modal de archivo grande
+        function closeLargeFileModal(result) {
+            const modal = document.getElementById('largeFileModal');
+            modal.classList.add('hidden');
+            if (modalResolve) {
+                modalResolve(result);
+                modalResolve = null;
+            }
+        }
+
+        // Función para mostrar el progreso de carga
+        function showUploadProgress() {
+            const progressContainer = document.getElementById('upload-progress-container');
+            progressContainer.classList.remove('hidden');
+        }
+
+        // Función para ocultar el progreso de carga
+        function hideUploadProgress() {
+            const progressContainer = document.getElementById('upload-progress-container');
+            progressContainer.classList.add('hidden');
+        }
+
+        // Función para actualizar el progreso
+        function updateUploadProgress(loaded, total) {
+            const progress = Math.round((loaded / total) * 100);
+            const progressBar = document.getElementById('upload-progress');
+            const statusText = document.getElementById('upload-status');
+            const details = document.getElementById('upload-details');
+
+            progressBar.style.width = `${progress}%`;
+            
+            const loadedSize = loaded > 1024 * 1024 * 1024 
+                ? `${(loaded / (1024 * 1024 * 1024)).toFixed(2)} GB`
+                : `${Math.round(loaded / (1024 * 1024))} MB`;
+            const totalSize = total > 1024 * 1024 * 1024
+                ? `${(total / (1024 * 1024 * 1024)).toFixed(2)} GB`
+                : `${Math.round(total / (1024 * 1024))} MB`;
+
+            statusText.textContent = `Subiendo archivos... ${progress}%`;
+            details.textContent = `${loadedSize} de ${totalSize}`;
+
+            // Si la carga está completa, ocultar la barra después de un momento
+            if (progress === 100) {
+                setTimeout(() => {
+                    hideUploadProgress();
+                }, 1000);
+            }
+        }
+
+        // Función para validar archivo con modal
+        async function validateFile(file) {
+            const maxFileSize = 1024 * 1024 * 1024; // 1GB
+            const allowedTypes = {
+                'image/jpeg': 'imagen JPG',
+                'image/png': 'imagen PNG',
+                'image/gif': 'imagen GIF',
+                'video/mp4': 'video MP4',
+                'video/webm': 'video WebM'
+            };
+
+            if (!allowedTypes.hasOwnProperty(file.type)) {
+                await showLargeFileModal('Solo se permiten imágenes (JPG, PNG, GIF) y videos (MP4, WebM).');
+                return false;
+            }
+
+            if (file.size > maxFileSize) {
+                const sizeInGB = (file.size / (1024 * 1024 * 1024)).toFixed(2);
+                await showLargeFileModal(`El archivo "${file.name}" (${sizeInGB}GB) excede el límite permitido de 1GB.`);
+                return false;
+            }
+
+            if (file.size > (100 * 1024 * 1024)) {
+                const sizeInMB = Math.round(file.size / (1024 * 1024));
+                const shouldContinue = await showLargeFileModal(
+                    `El archivo "${file.name}" es grande (${sizeInMB}MB). La carga podría tardar varios minutos. ¿Deseas continuar?`
+                );
+                if (!shouldContinue) return false;
+            }
+
+            return true;
+        }
+
+        // Función para manejar la subida de archivos
+        async function handleFiles(files) {
+            if (files.length > 10) {
+                await showLargeFileModal('Máximo 10 archivos permitidos');
+                return;
+            }
+
             const preview = document.getElementById('media-preview');
             const clearBtn = document.getElementById('clear-btn');
-            
-            if (files.length === 0) {
-                preview.classList.add('hidden');
-                clearBtn.classList.add('hidden');
-                return;
-            }
+            const dropZone = document.getElementById('drop-zone');
             
             preview.innerHTML = '';
-            preview.classList.remove('hidden');
-            clearBtn.classList.remove('hidden');
             
-            // Validar número de archivos
-            if (files.length > 10) {
-                alert('Máximo 10 archivos permitidos');
-                input.value = '';
+            if (files.length > 0) {
+                const totalSize = Array.from(files).reduce((acc, file) => acc + file.size, 0);
+                if (totalSize > (200 * 1024 * 1024)) {
+                    const totalSizeInMB = Math.round(totalSize / (1024 * 1024));
+                    const shouldContinue = await showLargeFileModal(
+                        `Has seleccionado ${files.length} archivos con un tamaño total de ${totalSizeInMB}MB. La carga podría tardar varios minutos. ¿Deseas continuar?`
+                    );
+                    if (!shouldContinue) {
+                        clearFiles();
+                        return;
+                    }
+                }
+
+                preview.classList.remove('hidden');
+                clearBtn.classList.remove('hidden');
+                dropZone.classList.add('hidden');
+
+                // Configurar el progreso total
+                currentUpload = {
+                    totalFiles: files.length,
+                    processedFiles: 0,
+                    totalSize: totalSize,
+                    uploadedSize: 0
+                };
+
+                showUploadProgress();
+
+                for (const file of Array.from(files)) {
+                    if (!await validateFile(file)) continue;
+
+                    const reader = new FileReader();
+                    const fileDiv = createFilePreview(file);
+                    preview.appendChild(fileDiv);
+
+                    reader.onload = (e) => {
+                        if (file.type.startsWith('image/')) {
+                            const img = fileDiv.querySelector('img');
+                            if (img) img.src = e.target.result;
+                        } else if (file.type.startsWith('video/')) {
+                            const video = fileDiv.querySelector('video');
+                            if (video) video.src = e.target.result;
+                        }
+                        
+                        // Actualizar progreso
+                        currentUpload.processedFiles++;
+                        currentUpload.uploadedSize += file.size;
+                        updateUploadProgress(currentUpload.uploadedSize, currentUpload.totalSize);
+                    };
+
+                    reader.readAsDataURL(file);
+                }
+            } else {
                 preview.classList.add('hidden');
                 clearBtn.classList.add('hidden');
-                return;
+                dropZone.classList.remove('hidden');
+                hideUploadProgress();
             }
-            
-            Array.from(files).forEach((file, index) => {
-                const fileDiv = document.createElement('div');
-                fileDiv.className = 'relative bg-gray-100 rounded-lg overflow-hidden';
-                
-                const removeBtn = document.createElement('button');
-                removeBtn.type = 'button';
-                removeBtn.className = 'absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 z-10';
-                removeBtn.innerHTML = '×';
-                removeBtn.onclick = () => removeFile(index);
-                
-                if (file.type.startsWith('image/')) {
-                    const img = document.createElement('img');
-                    img.className = 'w-full h-24 object-cover';
-                    img.src = URL.createObjectURL(file);
-                    img.onload = () => URL.revokeObjectURL(img.src);
-                    
-                    fileDiv.appendChild(img);
-                } else if (file.type.startsWith('video/')) {
-                    const video = document.createElement('video');
-                    video.className = 'w-full h-24 object-cover';
-                    video.src = URL.createObjectURL(file);
-                    video.controls = false;
-                    video.muted = true;
-                    
-                    const playIcon = document.createElement('div');
-                    playIcon.className = 'absolute inset-0 flex items-center justify-center bg-black bg-opacity-50';
-                    playIcon.innerHTML = '<i class="fas fa-play text-white text-xl"></i>';
-                    
-                    fileDiv.appendChild(video);
-                    fileDiv.appendChild(playIcon);
-                }
-                
-                const fileName = document.createElement('div');
-                fileName.className = 'absolute bottom-0 left-0 right-0 bg-black bg-opacity-75 text-white text-xs p-1 truncate';
-                fileName.textContent = file.name;
-                
-                fileDiv.appendChild(removeBtn);
-                fileDiv.appendChild(fileName);
-                preview.appendChild(fileDiv);
-            });
         }
-        
-        // Función para remover un archivo específico
-        function removeFile(index) {
-            const input = document.getElementById('media-input');
-            const dt = new DataTransfer();
-            
-            Array.from(input.files).forEach((file, i) => {
-                if (i !== index) {
-                    dt.items.add(file);
-                }
-            });
-            
-            input.files = dt.files;
-            previewFiles(input);
+
+        function createFilePreview(file) {
+            const div = document.createElement('div');
+            div.className = 'relative bg-gray-100 rounded-lg aspect-square overflow-hidden';
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 z-10 shadow-sm';
+            removeBtn.innerHTML = '×';
+            removeBtn.onclick = () => div.remove();
+
+            if (file.type.startsWith('image/')) {
+                const img = document.createElement('img');
+                img.className = 'w-full h-full object-cover';
+                div.appendChild(img);
+            } else if (file.type.startsWith('video/')) {
+                const video = document.createElement('video');
+                video.className = 'w-full h-full object-cover';
+                video.controls = false;
+                
+                const playIcon = document.createElement('div');
+                playIcon.className = 'absolute inset-0 flex items-center justify-center bg-black bg-opacity-30';
+                playIcon.innerHTML = '<i class="fas fa-play text-white text-xl"></i>';
+                
+                div.appendChild(video);
+                div.appendChild(playIcon);
+            }
+
+            const fileName = document.createElement('div');
+            fileName.className = 'absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white text-xs p-1 truncate';
+            fileName.textContent = file.name;
+
+            div.appendChild(removeBtn);
+            div.appendChild(fileName);
+            return div;
         }
-        
-        // Función para limpiar todos los archivos
+
         function clearFiles() {
             const input = document.getElementById('media-input');
             const preview = document.getElementById('media-preview');
             const clearBtn = document.getElementById('clear-btn');
+            const dropZone = document.getElementById('drop-zone');
             
             input.value = '';
             preview.innerHTML = '';
             preview.classList.add('hidden');
             clearBtn.classList.add('hidden');
+            dropZone.classList.remove('hidden');
+            hideUploadProgress();
         }
         
-        // Configurar drag & drop
-        document.addEventListener('DOMContentLoaded', function() {
-            const dropZone = document.querySelector('.border-dashed');
-            const fileInput = document.getElementById('media-input');
-            
-            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, preventDefaults, false);
-            });
-            
-            function preventDefaults(e) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-            
-            ['dragenter', 'dragover'].forEach(eventName => {
-                dropZone.addEventListener(eventName, highlight, false);
-            });
-            
-            ['dragleave', 'drop'].forEach(eventName => {
-                dropZone.addEventListener(eventName, unhighlight, false);
-            });
-            
-            function highlight(e) {
-                dropZone.classList.add('border-indigo-500', 'bg-indigo-50');
-            }
-            
-            function unhighlight(e) {
-                dropZone.classList.remove('border-indigo-500', 'bg-indigo-50');
-            }
-            
-            dropZone.addEventListener('drop', handleDrop, false);
-            
-            function handleDrop(e) {
-                const dt = e.dataTransfer;
-                const files = dt.files;
-                
-                                 fileInput.files = files;
-                 previewFiles(fileInput);
-             }
-         });
-
         // ===== FUNCIONES PARA MODAL DE MEDIOS =====
         
         let currentPostMedia = [];
@@ -952,6 +1191,28 @@ $trending_posts = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 closeMediaModal();
             }
         });
+
+        function followPage(pageId) {
+            fetch('follow_page.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ page_id: pageId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Error al seguir la página: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error al procesar la solicitud');
+            });
+        }
     </script>
 </body>
 </html> 

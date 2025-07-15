@@ -100,8 +100,20 @@ if ($user_permissions['is_admin']) {
 
                     <?php if ($user_permissions['is_admin']): ?>
                     <a href="admin_membership_requests.php" 
-                       class="<?php echo $current_page === 'admin_membership_requests.php' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'; ?> inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-all duration-200">
-                        <i class="fas fa-crown mr-2"></i>Solicitudes
+                       class="<?php echo $current_page === 'admin_membership_requests.php' ? 'border-purple-500 text-purple-600' : 'border-transparent text-purple-500 hover:text-purple-700 hover:border-purple-300'; ?> inline-flex items-center px-3 py-1 border-b-2 text-sm font-medium transition-all duration-200 bg-purple-50 rounded-t-lg">
+                        <i class="fas fa-crown text-purple-500 mr-2"></i>Solicitudes
+                        <?php
+                        // Obtener cantidad de solicitudes pendientes
+                        $query = "SELECT COUNT(*) as pending_count FROM membership_requests WHERE status = 'pending'";
+                        $stmt = $db->prepare($query);
+                        $stmt->execute();
+                        $pending_count = $stmt->fetch(PDO::FETCH_ASSOC)['pending_count'];
+                        
+                        if ($pending_count > 0): ?>
+                            <span class="ml-2 bg-purple-100 text-purple-600 text-xs px-2 py-0.5 rounded-full">
+                                <?php echo $pending_count; ?>
+                            </span>
+                        <?php endif; ?>
                     </a>
                     <?php endif; ?>
                 </div>
@@ -203,9 +215,14 @@ if ($user_permissions['is_admin']) {
 
                 <?php if ($user_permissions['is_admin']): ?>
                 <a href="admin_membership_requests.php" 
-                   class="<?php echo $current_page === 'admin_membership_requests.php' ? 'bg-blue-50 text-blue-600' : 'text-gray-600 hover:bg-gray-50'; ?> flex items-center px-4 py-3 text-base font-medium rounded-lg transition-all duration-200">
-                    <i class="fas fa-crown mr-3 w-6 text-center"></i>
+                   class="<?php echo $current_page === 'admin_membership_requests.php' ? 'bg-purple-100 text-purple-600' : 'text-purple-600 hover:bg-purple-50'; ?> flex items-center px-4 py-3 text-base font-medium rounded-lg transition-all duration-200">
+                    <i class="fas fa-crown text-purple-500 mr-3 w-6 text-center"></i>
                     <span>Solicitudes</span>
+                    <?php if ($pending_count > 0): ?>
+                        <span class="ml-auto bg-purple-200 text-purple-600 text-xs px-2 py-0.5 rounded-full">
+                            <?php echo $pending_count; ?>
+                        </span>
+                    <?php endif; ?>
                 </a>
                 <?php endif; ?>
 
