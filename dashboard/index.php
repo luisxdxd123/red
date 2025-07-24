@@ -266,6 +266,10 @@ $popular_pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <p class="text-xs text-gray-500">
                                     Imágenes (JPG, PNG, GIF) y Videos (MP4, WebM) hasta 1GB
                                 </p>
+                                <p id="file-count-info" class="text-xs text-blue-600 font-medium hidden">
+                                    <i class="fas fa-info-circle mr-1"></i>
+                                    <span id="file-count">0</span> archivos seleccionados (máximo 10)
+                                </p>
                             </div>
                             <input type="file" name="media[]" multiple 
                                    accept="image/jpeg,image/png,image/gif,video/mp4,video/webm"
@@ -286,6 +290,19 @@ $popular_pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                         <!-- Vista previa de archivos -->
                         <div id="media-preview" class="grid grid-cols-2 sm:grid-cols-3 gap-2 hidden"></div>
+
+                        <!-- Botón para agregar más archivos cuando ya hay archivos seleccionados -->
+                        <div id="add-more-files" class="text-center py-3 hidden">
+                            <button type="button" 
+                                    onclick="addMoreFiles()" 
+                                    class="inline-flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors duration-200">
+                                <i class="fas fa-plus mr-2"></i>
+                                Agregar más archivos
+                            </button>
+                            <p class="text-xs text-gray-500 mt-2">
+                                <span id="remaining-files">0</span> <span id="remaining-text">archivos restantes de 10</span>
+                            </p>
+                        </div>
 
                         <!-- Botones de acción -->
                         <div class="flex items-center justify-between pt-3 border-t border-gray-100">
@@ -851,6 +868,9 @@ $popular_pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
             totalSize: 0,
             uploadedSize: 0
         };
+        
+        // Array para mantener los archivos seleccionados
+        let selectedFiles = [];
 
         // Función para mostrar el modal de archivo grande
         function showLargeFileModal(message) {
@@ -946,37 +966,102 @@ $popular_pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Función para manejar la subida de archivos
         async function handleFiles(files) {
-            if (files.length > 10) {
-                await showLargeFileModal('Máximo 10 archivos permitidos');
-                return;
+            // Agregar archivos a los ya seleccionados
+            for (const file of Array.from(files)) {
+                if (selectedFiles.length >= 10) {
+                    await showLargeFileModal('Máximo 10 archivos permitidos');
+                    break;
+                }
+                
+                // Verificar si el archivo ya existe (por nombre y tamaño)
+                const isDuplicate = selectedFiles.some(existingFile => 
+                    existingFile.name === file.name && existingFile.size === file.size
+                );
+                
+                if (isDuplicate) {
+                    console.log(`Archivo duplicado ignorado: ${file.name}`);
+                    continue;
+                }
+                
+                if (await validateFile(file)) {
+                    selectedFiles.push(file);
+                }
             }
-
-            const preview = document.getElementById('media-preview');
-            const clearBtn = document.getElementById('clear-btn');
-            const dropZone = document.getElementById('drop-zone');
             
-            preview.innerHTML = '';
-            
-            if (files.length > 0) {
-                const totalSize = Array.from(files).reduce((acc, file) => acc + file.size, 0);
+            // Verificar tamaño total
+            if (selectedFiles.length > 0) {
+                const totalSize = selectedFiles.reduce((acc, file) => acc + file.size, 0);
                 if (totalSize > (200 * 1024 * 1024)) {
                     const totalSizeInMB = Math.round(totalSize / (1024 * 1024));
                     const shouldContinue = await showLargeFileModal(
-                        `Has seleccionado ${files.length} archivos con un tamaño total de ${totalSizeInMB}MB. La carga podría tardar varios minutos. ¿Deseas continuar?`
+                        `Has seleccionado ${selectedFiles.length} archivos con un tamaño total de ${totalSizeInMB}MB. La carga podría tardar varios minutos. ¿Deseas continuar?`
                     );
                     if (!shouldContinue) {
                         clearFiles();
                         return;
                     }
                 }
-
+            }
+            
+            // Actualizar la vista previa
+            updatePreview();
+            
+            // Sincronizar con el input file
+            syncInputFile();
+        }
+        
+        // Función para actualizar la vista previa
+        function updatePreview() {
+            const preview = document.getElementById('media-preview');
+            const clearBtn = document.getElementById('clear-btn');
+            const dropZone = document.getElementById('drop-zone');
+            const fileCountInfo = document.getElementById('file-count-info');
+            const fileCount = document.getElementById('file-count');
+            const addMoreFiles = document.getElementById('add-more-files');
+            const remainingFiles = document.getElementById('remaining-files');
+            const remainingText = document.getElementById('remaining-text');
+            
+            preview.innerHTML = '';
+            
+            // Actualizar contador de archivos
+            fileCount.textContent = selectedFiles.length;
+            const remaining = 10 - selectedFiles.length;
+            remainingFiles.textContent = remaining;
+            
+            // Actualizar texto del contador de manera inteligente
+            if (remaining === 1) {
+                remainingText.textContent = 'archivo restante de 10';
+            } else if (remaining === 0) {
+                remainingText.textContent = '¡Límite alcanzado!';
+            } else {
+                remainingText.textContent = 'archivos restantes de 10';
+            }
+            
+            if (selectedFiles.length > 0) {
                 preview.classList.remove('hidden');
                 clearBtn.classList.remove('hidden');
                 dropZone.classList.add('hidden');
+                fileCountInfo.classList.remove('hidden');
+                
+                // Mostrar botón de agregar más archivos si no se ha alcanzado el límite
+                if (selectedFiles.length < 10) {
+                    addMoreFiles.classList.remove('hidden');
+                    const addMoreBtn = addMoreFiles.querySelector('button');
+                    addMoreBtn.disabled = false;
+                    addMoreBtn.className = 'inline-flex items-center px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg transition-colors duration-200';
+                    addMoreBtn.innerHTML = '<i class="fas fa-plus mr-2"></i>Agregar más archivos';
+                } else {
+                    addMoreFiles.classList.remove('hidden');
+                    const addMoreBtn = addMoreFiles.querySelector('button');
+                    addMoreBtn.disabled = true;
+                    addMoreBtn.className = 'inline-flex items-center px-4 py-2 bg-gray-300 text-gray-500 text-sm font-medium rounded-lg cursor-not-allowed';
+                    addMoreBtn.innerHTML = '<i class="fas fa-check mr-2"></i>Límite alcanzado (10 archivos)';
+                }
 
                 // Configurar el progreso total
+                const totalSize = selectedFiles.reduce((acc, file) => acc + file.size, 0);
                 currentUpload = {
-                    totalFiles: files.length,
+                    totalFiles: selectedFiles.length,
                     processedFiles: 0,
                     totalSize: totalSize,
                     uploadedSize: 0
@@ -984,11 +1069,9 @@ $popular_pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
                 showUploadProgress();
 
-                for (const file of Array.from(files)) {
-                    if (!await validateFile(file)) continue;
-
+                selectedFiles.forEach((file, index) => {
                     const reader = new FileReader();
-                    const fileDiv = createFilePreview(file);
+                    const fileDiv = createFilePreview(file, index);
                     preview.appendChild(fileDiv);
 
                     reader.onload = (e) => {
@@ -1007,24 +1090,39 @@ $popular_pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
                     };
 
                     reader.readAsDataURL(file);
-                }
+                });
             } else {
                 preview.classList.add('hidden');
                 clearBtn.classList.add('hidden');
                 dropZone.classList.remove('hidden');
+                fileCountInfo.classList.add('hidden');
+                addMoreFiles.classList.add('hidden');
                 hideUploadProgress();
             }
         }
+        
+        // Función para sincronizar el input file con los archivos seleccionados
+        function syncInputFile() {
+            const input = document.getElementById('media-input');
+            const dt = new DataTransfer();
+            
+            selectedFiles.forEach(file => {
+                dt.items.add(file);
+            });
+            
+            input.files = dt.files;
+        }
 
-        function createFilePreview(file) {
+        function createFilePreview(file, index) {
             const div = document.createElement('div');
             div.className = 'relative bg-gray-100 rounded-lg aspect-square overflow-hidden';
+            div.setAttribute('data-file-index', index);
 
             const removeBtn = document.createElement('button');
             removeBtn.type = 'button';
             removeBtn.className = 'absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs hover:bg-red-600 z-10 shadow-sm';
             removeBtn.innerHTML = '×';
-            removeBtn.onclick = () => div.remove();
+            removeBtn.onclick = () => removeFile(index);
 
             if (file.type.startsWith('image/')) {
                 const img = document.createElement('img');
@@ -1051,17 +1149,51 @@ $popular_pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
             div.appendChild(fileName);
             return div;
         }
+        
+        // Función para remover un archivo específico
+        function removeFile(index) {
+            selectedFiles.splice(index, 1);
+            updatePreview();
+            syncInputFile();
+        }
+        
+        // Función para agregar más archivos
+        function addMoreFiles() {
+            if (selectedFiles.length < 10) {
+                // Efecto visual en el botón
+                const btn = document.querySelector('#add-more-files button');
+                const originalText = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Seleccionando...';
+                
+                // Abrir selector de archivos
+                document.getElementById('media-input').click();
+                
+                // Restaurar texto original después de un momento
+                setTimeout(() => {
+                    if (btn.innerHTML.includes('Seleccionando')) {
+                        btn.innerHTML = originalText;
+                    }
+                }, 2000);
+            }
+        }
 
         function clearFiles() {
             const input = document.getElementById('media-input');
             const preview = document.getElementById('media-preview');
             const clearBtn = document.getElementById('clear-btn');
             const dropZone = document.getElementById('drop-zone');
+            const addMoreFiles = document.getElementById('add-more-files');
+            const fileCountInfo = document.getElementById('file-count-info');
+            
+            // Limpiar array de archivos seleccionados
+            selectedFiles = [];
             
             input.value = '';
             preview.innerHTML = '';
             preview.classList.add('hidden');
             clearBtn.classList.add('hidden');
+            addMoreFiles.classList.add('hidden');
+            fileCountInfo.classList.add('hidden');
             dropZone.classList.remove('hidden');
             hideUploadProgress();
         }
@@ -1090,7 +1222,7 @@ $popular_pages = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 // Obtener los medios del post actual
                 const mediaElements = postElement.querySelectorAll('.media-grid img, .media-grid video');
                 currentPostMedia = Array.from(mediaElements).map(el => ({
-                    file_path: el.src || el.querySelector('source').src,
+                    file_path: el.src || (el.querySelector('source') ? el.querySelector('source').src : el.src),
                     file_type: el.tagName.toLowerCase() === 'img' ? 'image' : 'video',
                     mime_type: el.type || 'video/mp4'
                 }));

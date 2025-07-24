@@ -31,6 +31,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     throw new Exception('Máximo 10 archivos por publicación');
                 }
                 
+                // Preparar datos de medios para inserción en lote
+                $media_data = [];
+                $uploaded_file_paths = [];
+                
+                // Primero procesar todos los archivos físicos
                 for ($i = 0; $i < $total_files; $i++) {
                     if ($_FILES['media']['error'][$i] == UPLOAD_ERR_OK) {
                         $file = [
@@ -40,14 +45,34 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             'size' => $_FILES['media']['size'][$i]
                         ];
                         
-                        $upload_result = uploadMediaFile($file, $post_id);
+                        // Procesar solo el archivo físico
+                        $process_result = processMediaFile($file);
                         
-                        if ($upload_result['success']) {
+                        if ($process_result['success']) {
                             $uploaded_files++;
                             $has_media = true;
+                            $uploaded_file_paths[] = $process_result['file_path'];
+                            
+                            // Agregar datos para inserción en lote
+                            $media_data[] = [
+                                'post_id' => $post_id,
+                                'file_name' => $process_result['file_name'],
+                                'file_type' => $process_result['file_type'],
+                                'file_path' => $process_result['file_path'],
+                                'file_size' => $process_result['file_size'],
+                                'mime_type' => $process_result['mime_type']
+                            ];
                         } else {
-                            $media_errors[] = "Error en archivo " . ($i + 1) . ": " . $upload_result['error'];
+                            $media_errors[] = "Error en archivo " . ($i + 1) . ": " . $process_result['error'];
                         }
+                    }
+                }
+                
+                // Insertar todos los medios en lote si hay archivos subidos
+                if (!empty($media_data)) {
+                    $batch_result = insertMediaBatch($media_data, $db);
+                    if (!$batch_result['success']) {
+                        throw new Exception('Error al guardar medios: ' . $batch_result['error']);
                     }
                 }
                 
@@ -71,6 +96,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         } catch (Exception $e) {
             // Revertir transacción en caso de error
             $db->rollBack();
+            
+            // Limpiar archivos subidos si la transacción falló
+            if (!empty($uploaded_file_paths)) {
+                foreach ($uploaded_file_paths as $file_path) {
+                    if (file_exists($file_path)) {
+                        unlink($file_path);
+                    }
+                }
+            }
+            
             $_SESSION['error'] = 'Error al publicar el post: ' . $e->getMessage();
         }
     } else {

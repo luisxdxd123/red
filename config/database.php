@@ -16,14 +16,33 @@ class Database {
         $this->conn = null;
         
         try {
+            // Opciones básicas de conexión
+            $options = [
+                PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                PDO::ATTR_EMULATE_PREPARES => false
+            ];
+            
             $this->conn = new PDO(
                 "mysql:host=" . $this->host . ";dbname=" . $this->db_name . ";charset=utf8mb4",
                 $this->username,
-                $this->password
+                $this->password,
+                $options
             );
-            $this->conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+            
+            // Configurar variables de sesión de manera segura
+            try {
+                // Intentar configurar timeouts más largos
+                $this->conn->exec("SET SESSION wait_timeout = 300");           // 5 minutos
+                $this->conn->exec("SET SESSION innodb_lock_wait_timeout = 50"); // 50 segundos
+            } catch (PDOException $e) {
+                // Si falla la configuración de timeouts, continuar de todos modos
+                error_log("Advertencia: No se pudieron configurar los timeouts personalizados: " . $e->getMessage());
+            }
+            
         } catch(PDOException $exception) {
-            echo "Error de conexión: " . $exception->getMessage();
+            error_log("Error de conexión a la base de datos: " . $exception->getMessage());
+            throw new Exception("Error de conexión a la base de datos. Por favor, inténtalo de nuevo más tarde.");
         }
         
         return $this->conn;

@@ -331,8 +331,8 @@ function generateUniqueFileName($original_name) {
     return uniqid() . '_' . $safe_name . '.' . $extension;
 }
 
-// Función para subir archivo multimedia
-function uploadMediaFile($file, $post_id) {
+// Función para procesar archivo multimedia (solo archivo físico)
+function processMediaFile($file) {
     $validation = validateMediaFile($file);
     if (!$validation['success']) {
         return $validation;
@@ -350,10 +350,52 @@ function uploadMediaFile($file, $post_id) {
     $file_name = generateUniqueFileName($file['name']);
     $file_path = $upload_dir . $file_name;
     
-    if (move_uploaded_file($file['tmp_name'], $file_path)) {
-        // Guardar en base de datos
-        $database = new Database();
-        $db = $database->getConnection();
+    // Subir el archivo físico
+    if (!move_uploaded_file($file['tmp_name'], $file_path)) {
+        return ['success' => false, 'error' => 'Error al subir archivo'];
+    }
+    
+    return [
+        'success' => true,
+        'file_name' => $file_name,
+        'file_type' => $validation['media_type'],
+        'file_path' => $file_path,
+        'file_size' => $file['size'],
+        'mime_type' => $file['type']
+    ];
+}
+
+// Función para subir archivo multimedia (mantener compatibilidad)
+function uploadMediaFile($file, $post_id, $db = null) {
+    $validation = validateMediaFile($file);
+    if (!$validation['success']) {
+        return $validation;
+    }
+    
+    // Crear directorio por fecha
+    $year = date('Y');
+    $month = date('m');
+    $upload_dir = "uploads/posts/{$year}/{$month}/";
+    
+    if (!file_exists($upload_dir)) {
+        mkdir($upload_dir, 0755, true);
+    }
+    
+    $file_name = generateUniqueFileName($file['name']);
+    $file_path = $upload_dir . $file_name;
+    
+    // Primero subir el archivo físico
+    if (!move_uploaded_file($file['tmp_name'], $file_path)) {
+        return ['success' => false, 'error' => 'Error al subir archivo'];
+    }
+    
+    // Luego guardar en base de datos usando la conexión proporcionada
+    try {
+        // Si no se proporciona conexión, crear una nueva
+        if ($db === null) {
+            $database = new Database();
+            $db = $database->getConnection();
+        }
         
         $query = "INSERT INTO post_media (post_id, file_name, file_type, file_path, file_size, mime_type) 
                   VALUES (?, ?, ?, ?, ?, ?)";
@@ -374,8 +416,57 @@ function uploadMediaFile($file, $post_id) {
             unlink($file_path);
             return ['success' => false, 'error' => 'Error al guardar en base de datos'];
         }
-    } else {
-        return ['success' => false, 'error' => 'Error al subir archivo'];
+    } catch (Exception $e) {
+        // Si hay error, eliminar el archivo subido
+        if (file_exists($file_path)) {
+            unlink($file_path);
+        }
+        return ['success' => false, 'error' => 'Error al procesar archivo: ' . $e->getMessage()];
+    }
+}
+
+// Función para insertar múltiples medios de forma eficiente
+function insertMediaBatch($media_data, $db = null) {
+    if (empty($media_data)) {
+        return ['success' => true, 'inserted_count' => 0];
+    }
+    
+    try {
+        // Si no se proporciona conexión, crear una nueva
+        if ($db === null) {
+            $database = new Database();
+            $db = $database->getConnection();
+        }
+        
+        // Preparar la consulta de inserción en lote
+        $placeholders = str_repeat('(?,?,?,?,?,?),', count($media_data));
+        $placeholders = rtrim($placeholders, ',');
+        
+        $query = "INSERT INTO post_media (post_id, file_name, file_type, file_path, file_size, mime_type) VALUES $placeholders";
+        $stmt = $db->prepare($query);
+        
+        // Aplanar el array de datos
+        $values = [];
+        foreach ($media_data as $media) {
+            $values = array_merge($values, [
+                $media['post_id'],
+                $media['file_name'],
+                $media['file_type'],
+                $media['file_path'],
+                $media['file_size'],
+                $media['mime_type']
+            ]);
+        }
+        
+        $result = $stmt->execute($values);
+        
+        if ($result) {
+            return ['success' => true, 'inserted_count' => count($media_data)];
+        } else {
+            return ['success' => false, 'error' => 'Error al insertar medios en lote'];
+        }
+    } catch (Exception $e) {
+        return ['success' => false, 'error' => 'Error en inserción en lote: ' . $e->getMessage()];
     }
 }
 
